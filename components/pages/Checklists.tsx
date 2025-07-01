@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
-import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer } from 'lucide-react-native';
+import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera,Plus, MoreVertical } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Checklist, ChecklistItem } from '@/types';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,7 @@ interface ChecklistTask {
 interface ChecklistSection {
   id: string;
   title: string;
+  description?: string;
   comment?: string;
   tasks: ChecklistTask[];
 }
@@ -119,15 +120,21 @@ export default function Checklists() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'opening' | 'closing' | 'probe' | 'weekly'>('opening');
   const [expandedChecklist, setExpandedChecklist] = useState<string | null>(null);
-  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [showSectionOptionsModal, setShowSectionOptionsModal] = useState(false);
   const [showTaskTypeModal, setShowTaskTypeModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const [checklists, setChecklists] = useState(mockChecklists);
   const [editMode, setEditMode] = useState(false);
+    const [editingSectionTitle, setEditingSectionTitle] = useState<string | null>(null);
+  const [editingSectionDescription, setEditingSectionDescription] = useState<string | null>(null);
+  const [sectionTitleValue, setSectionTitleValue] = useState('');
+  const [sectionDescriptionValue, setSectionDescriptionValue] = useState('');
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [sectionComment, setSectionComment] = useState('');
   const [showSectionCommentModal, setShowSectionCommentModal] = useState(false);
+    const [showCommentModal, setShowCommentModal] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{ checklistId: string; sectionId: string } | null>(null);
   const [addingTaskToSection, setAddingTaskToSection] = useState<{ checklistId: string; sectionId: string; insertIndex?: number } | null>(null);
 
@@ -153,6 +160,7 @@ export default function Checklists() {
     ));
   };
 
+
   const recordTemperature = (checklistId: string, itemId: string) => {
     const temperature = (Math.random() * 10 - 5).toFixed(1);
     Alert.alert(
@@ -161,64 +169,157 @@ export default function Checklists() {
       [{ text: 'OK' }]
     );
     
-    toggleItem(checklistId, itemId);
-  };
-
-  const addComment = (itemId: string) => {
-    setSelectedItem(itemId);
-    setShowCommentModal(true);
-  };
-
-  const saveComment = () => {
-    console.log('Save comment for item:', selectedItem, comment);
-    setShowCommentModal(false);
-    setComment('');
-    setSelectedItem(null);
-  };
-
-  const handleSectionComment = (checklistId: string, sectionId: string) => {
-    const checklist = checklists.find(c => c.id === checklistId);
-    const section = checklist?.sections.find(s => s.id === sectionId);
-    
-    setSelectedSection({ checklistId, sectionId });
-    setSectionComment(section?.comment || '');
-    setShowSectionCommentModal(true);
-  };
-
-  const saveSectionComment = () => {
-    if (!selectedSection) return;
-
     setChecklists(prev => prev.map(checklist => 
-      checklist.id === selectedSection.checklistId
+      checklist.id === checklistId 
         ? {
             ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === selectedSection.sectionId
-                ? { ...section, comment: sectionComment.trim() || undefined }
-                : section
-            )
+            sections: checklist.sections.map(section => ({
+              ...section,
+              tasks: section.tasks.map(item => 
+                item.id === itemId 
+                  ? { ...item, completed: true, timestamp: new Date(), value: `${temperature}°C` }
+                  : item
+              )
+            }))
           }
         : checklist
     ));
-
-    setShowSectionCommentModal(false);
-    setSectionComment('');
-    setSelectedSection(null);
   };
 
-  const updateSectionTitle = (checklistId: string, sectionId: string, newTitle: string) => {
+  const handleSectionOptions = (checklistId: string, sectionId: string) => {
+    setSelectedSection({ checklistId, sectionId });
+    setShowSectionOptionsModal(true);
+  };
+
+  const handleAddComment = () => {
+    setShowSectionOptionsModal(false);
+    setShowCommentModal(true);
+  };
+
+  const handleAddImage = () => {
+    setShowSectionOptionsModal(false);
+    setShowImageModal(true);
+  };
+
+  const handleRecordTemperatures = () => {
+    if (!selectedSection) return;
+
+    const { checklistId, sectionId } = selectedSection;
+    const temperatureTask = {
+      id: Date.now().toString(),
+      type: 'temperature' as const,
+      title: 'Automatic Temperature Recording',
+      completed: true,
+      timestamp: new Date(),
+      value: '3.2°C (Main Fridge), -18.5°C (Freezer A)'
+    };
+
     setChecklists(prev => prev.map(checklist => 
       checklist.id === checklistId
         ? {
             ...checklist,
             sections: checklist.sections.map(section => 
               section.id === sectionId
-                ? { ...section, title: newTitle }
+                ? { ...section, tasks: [...section.tasks, temperatureTask] }
                 : section
             )
           }
         : checklist
     ));
+
+    setShowSectionOptionsModal(false);
+    Alert.alert('Success', 'Temperature readings have been automatically recorded');
+  };
+
+  const saveComment = () => {
+    if (!selectedSection) return;
+
+    const { checklistId, sectionId } = selectedSection;
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, comment: comment.trim() || undefined }
+                : section
+            )
+          }
+        : checklist
+    ));
+
+    setShowCommentModal(false);
+    setComment('');
+    setSelectedSection(null);
+  };
+
+  const saveImage = () => {
+    if (!selectedSection) return;
+
+    const { checklistId, sectionId } = selectedSection;
+    // Mock image URI
+    const mockImageUri = 'https://images.pexels.com/photos/4099354/pexels-photo-4099354.jpeg?auto=compress&cs=tinysrgb&w=400';
+    
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, imageUri: mockImageUri }
+                : section
+            )
+          }
+        : checklist
+    ));
+
+    setShowImageModal(false);
+    setSelectedSection(null);
+    Alert.alert('Success', 'Image has been added to the section');
+  };
+
+  const startEditingSectionTitle = (sectionId: string, currentTitle: string) => {
+    setEditingSectionTitle(sectionId);
+    setSectionTitleValue(currentTitle);
+  };
+
+  const startEditingSectionDescription = (sectionId: string, currentDescription: string) => {
+    setEditingSectionDescription(sectionId);
+    setSectionDescriptionValue(currentDescription || '');
+  };
+
+  const saveSectionTitle = (checklistId: string, sectionId: string) => {
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, title: sectionTitleValue }
+                : section
+            )
+          }
+        : checklist
+    ));
+    setEditingSectionTitle(null);
+    setSectionTitleValue('');
+  };
+
+  const saveSectionDescription = (checklistId: string, sectionId: string) => {
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, description: sectionDescriptionValue }
+                : section
+            )
+          }
+        : checklist
+    ));
+    setEditingSectionDescription(null);
+    setSectionDescriptionValue('');
   };
 
   const handleAddTaskClick = (checklistId: string, sectionId: string, insertIndex?: number) => {
@@ -426,16 +527,7 @@ export default function Checklists() {
             numberOfLines={2}
           />
         )}
-        
-        {!editMode && (
-          <TouchableOpacity 
-            style={styles.commentButton}
-            onPress={() => addComment(item.id)}
-          >
-            <MessageSquare size={14} color={Colors.info} />
-            <Text style={styles.commentButtonText}>Comment</Text>
-          </TouchableOpacity>
-        )}
+
       </View>
     );
   };
@@ -544,56 +636,88 @@ export default function Checklists() {
                   </View>
                 </TouchableOpacity>
 
-                {expandedChecklist === checklist.id && (
+{expandedChecklist === checklist.id && (
                   <View style={styles.checklistContent}>
                     {checklist.sections.map(section => (
                       <View key={section.id} style={styles.sectionContainer}>
                         <View style={styles.sectionHeader}>
-                          {editMode ? (
-                            <TextInput
-                              style={styles.sectionTitleInput}
-                              value={section.title}
-                              onChangeText={(text) => updateSectionTitle(checklist.id, section.id, text)}
-                            />
-                          ) : (
-                            <Text style={styles.sectionTitle}>{section.title}</Text>
-                          )}
+                          <View style={styles.sectionTitleContainer}>
+                            {editMode && editingSectionTitle === section.id ? (
+                              <View style={styles.editTitleContainer}>
+                                <TextInput
+                                  style={styles.sectionTitleInput}
+                                  value={sectionTitleValue}
+                                  onChangeText={setSectionTitleValue}
+                                  onBlur={() => saveSectionTitle(checklist.id, section.id)}
+                                  autoFocus
+                                />
+                              </View>
+                            ) : (
+                              <TouchableOpacity
+                                onPress={() => editMode && startEditingSectionTitle(section.id, section.title)}
+                                disabled={!editMode}
+                              >
+                                <Text style={styles.sectionTitle}>{section.title}</Text>
+                              </TouchableOpacity>
+                            )}
+                            
+                            {section.description && (
+                              <>
+                                {editMode && editingSectionDescription === section.id ? (
+                                  <TextInput
+                                    style={styles.sectionDescriptionInput}
+                                    value={sectionDescriptionValue}
+                                    onChangeText={setSectionDescriptionValue}
+                                    onBlur={() => saveSectionDescription(checklist.id, section.id)}
+                                    placeholder="Add section description..."
+                                    multiline
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <TouchableOpacity
+                                    onPress={() => editMode && startEditingSectionDescription(section.id, section.description || '')}
+                                    disabled={!editMode}
+                                  >
+                                    <Text style={styles.sectionDescription}>{section.description}</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </>
+                            )}
+                            
+                            {editMode && !section.description && (
+                              <TouchableOpacity
+                                onPress={() => startEditingSectionDescription(section.id, '')}
+                                style={styles.addDescriptionButton}
+                              >
+                                <Plus size={16} color={Colors.info} />
+                                <Text style={styles.addDescriptionText}>Add description</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
                           
                           <TouchableOpacity
-                            style={styles.sectionCommentButton}
-                            onPress={() => handleSectionComment(checklist.id, section.id)}
+                            style={styles.sectionOptionsButton}
+                            onPress={() => handleSectionOptions(checklist.id, section.id)}
                           >
-                            {section.comment ? (
-                              <LinearGradient
-                                colors={[Colors.gradientStart, Colors.gradientEnd]}
-                                style={styles.commentIconGradient}
-                              >
-                                <MessageSquare size={16} color={Colors.textInverse} />
-                              </LinearGradient>
-                            ) : (
-                              <MessageSquare size={16} color={Colors.textSecondary} />
-                            )}
+                            <MoreVertical size={20} color={Colors.textSecondary} />
                           </TouchableOpacity>
                         </View>
 
                         {section.comment && (
                           <View style={styles.sectionComment}>
+                            <MessageSquare size={16} color={Colors.info} />
                             <Text style={styles.sectionCommentText}>{section.comment}</Text>
                           </View>
                         )}
 
+                        {section.imageUri && (
+                          <View style={styles.sectionImage}>
+                            <Image source={{ uri: section.imageUri }} style={styles.sectionImageView} />
+                          </View>
+                        )}
+
                         <View style={styles.sectionTasks}>
-                          {section.tasks.map((item, index) => renderTaskItem(item, checklist.id, section.id, index))}
-                          
-                          {/* Add task at end button (only in edit mode) */}
-                          {editMode && (
-                            <TouchableOpacity
-                              style={styles.addTaskButton}
-                              onPress={() => handleAddTaskClick(checklist.id, section.id)}
-                            >
-                              <Text style={styles.addTaskText}>+ Add Task</Text>
-                            </TouchableOpacity>
-                          )}
+                          {section.tasks.map((item) => renderTaskItem(item, checklist.id, section.id))}
                         </View>
                       </View>
                     ))}
@@ -607,6 +731,7 @@ export default function Checklists() {
                           </Text>
                         </View>
                       )}
+                      
                       
                       {checklist.status !== 'completed' && (
                         <TouchableOpacity
@@ -624,7 +749,37 @@ export default function Checklists() {
           )}
         </View>
       </ScrollView>
-
+      <Modal visible={showSectionOptionsModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Section Options</Text>
+              <TouchableOpacity onPress={() => setShowSectionOptionsModal(false)}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.optionsContainer}>
+              <TouchableOpacity style={styles.optionButton} onPress={handleAddComment}>
+                <MessageSquare size={20} color={Colors.info} />
+                <Text style={styles.optionText}>Add Comment</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.optionButton} onPress={handleAddImage}>
+                <Camera size={20} color={Colors.info} />
+                <Text style={styles.optionText}>Add Image</Text>
+              </TouchableOpacity>
+              
+              {isSensorBased && (
+                <TouchableOpacity style={styles.optionButton} onPress={handleRecordTemperatures}>
+                  <Thermometer size={20} color={Colors.info} />
+                  <Text style={styles.optionText}>Record Temperatures</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* Task Type Selection Modal */}
       <Modal visible={showTaskTypeModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -735,10 +890,7 @@ export default function Checklists() {
               >
                 <Text style={styles.cancelModalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={saveSectionComment}>
-                <Save size={16} color={Colors.textInverse} />
-                <Text style={styles.primaryButtonText}>Save</Text>
-              </TouchableOpacity>
+
             </View>
           </View>
         </View>
@@ -1225,5 +1377,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: Colors.textInverse,
+  },
+  optionsContainer: {
+    padding: 24,
+    gap: 16,
+  },
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 12,
+    gap: 12,
+  },
+  optionText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textPrimary,
+  },
+    sectionDescriptionInput: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderMedium,
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 8,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+    addDescriptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  addDescriptionText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.info,
+  },
+    sectionTitleContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+   sectionOptionsButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: Colors.backgroundSecondary,
+  },
+   sectionDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    marginBottom: 8,
   },
 });

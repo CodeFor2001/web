@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Modal, TextInput } from 'react-native';
 import { Globe, Bell, Users, Shield, ChevronRight, Mail, Smartphone } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
@@ -11,7 +11,7 @@ interface SettingItem {
   title: string;
   subtitle?: string;
   icon: any;
-  type: 'navigation' | 'toggle' | 'selector';
+  type: 'navigation' | 'toggle' | 'selector' | 'input';
   value?: boolean | string;
   options?: string[];
 }
@@ -22,10 +22,13 @@ export default function Settings() {
     emailNotifications: true,
     pushNotifications: true,
     smsNotifications: false,
+    alertEmail: 'admin@vigilix.tech',
     language: i18n.language,
   });
 
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [tempEmail, setTempEmail] = useState(settings.alertEmail);
 
   const languages = [
     { code: 'en', name: 'English' },
@@ -57,6 +60,14 @@ export default function Settings() {
           type: 'selector' as const,
           value: settings.language,
           options: languages.map(l => l.name),
+        },
+        {
+          id: 'alertEmail',
+          title: 'Alert Email',
+          subtitle: settings.alertEmail,
+          icon: Mail,
+          type: 'input' as const,
+          value: settings.alertEmail,
         },
       ],
     },
@@ -115,6 +126,9 @@ export default function Settings() {
       toggleSetting(item.id);
     } else if (item.type === 'selector' && item.id === 'language') {
       setShowLanguageModal(true);
+    } else if (item.type === 'input' && item.id === 'alertEmail') {
+      setTempEmail(settings.alertEmail);
+      setShowEmailModal(true);
     } else if (item.type === 'navigation') {
       console.log('Navigate to:', item.id);
     }
@@ -124,6 +138,11 @@ export default function Settings() {
     i18n.changeLanguage(languageCode);
     setSettings(prev => ({ ...prev, language: languageCode }));
     setShowLanguageModal(false);
+  };
+
+  const saveEmail = () => {
+    setSettings(prev => ({ ...prev, alertEmail: tempEmail }));
+    setShowEmailModal(false);
   };
 
   return (
@@ -222,6 +241,51 @@ export default function Settings() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Email Input Modal */}
+      <Modal visible={showEmailModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Alert Email</Text>
+              <TouchableOpacity onPress={() => setShowEmailModal(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.emailInputContainer}>
+              <Text style={styles.emailLabel}>Email Address</Text>
+              <TextInput
+                style={styles.emailInput}
+                value={tempEmail}
+                onChangeText={setTempEmail}
+                placeholder="Enter email address"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.emailHelperText}>
+                This email will receive critical alerts and notifications
+              </Text>
+            </View>
+
+            <View style={styles.emailActions}>
+              <TouchableOpacity 
+                style={styles.emailCancelButton}
+                onPress={() => setShowEmailModal(false)}
+              >
+                <Text style={styles.emailCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.emailSaveButton}
+                onPress={saveEmail}
+              >
+                <Text style={styles.emailSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -345,7 +409,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Language modal styles
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -414,5 +478,61 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontFamily: 'Inter-Bold',
+  },
+  emailInputContainer: {
+    padding: 24,
+  },
+  emailLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  emailInput: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  emailHelperText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#64748B',
+    lineHeight: 20,
+  },
+  emailActions: {
+    flexDirection: 'row',
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    gap: 12,
+  },
+  emailCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  emailCancelText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#64748B',
+  },
+  emailSaveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+  },
+  emailSaveText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
   },
 });

@@ -244,12 +244,14 @@ const styles = StyleSheet.create({
     minHeight: 72,
   },
   toggleButton: {
+    marginTop: 20,
     padding: 8,
     borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
   titleContainer: {
-    marginLeft: 12,
+    marginLeft: 20,
+    marginTop: 20,
     flex: 1,
   },
   titleGradient: {

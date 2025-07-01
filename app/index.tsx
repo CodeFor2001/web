@@ -87,7 +87,7 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
-      <View style={[styles.content, { marginLeft: sidebarCollapsed ? 65 : 220 }]}>
+      <View style={[styles.content, { marginLeft: sidebarCollapsed ? 0 : 0 }]}>
         {renderPage()}
       </View>
     </View>
