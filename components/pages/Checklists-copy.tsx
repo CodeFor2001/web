@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
-import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera, Plus, MoveVertical as MoreVertical, GripVertical } from 'lucide-react-native';
+import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera,Plus, MoreVertical } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Checklist, ChecklistItem } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/Colors';
-import { Platform } from 'react-native';
 
 interface ChecklistTask {
   id: string;
@@ -15,8 +14,6 @@ interface ChecklistTask {
   placeholder?: string;
   completed: boolean;
   timestamp?: Date;
-  value?: string;
-  textInput?: string;
 }
 
 interface ChecklistSection {
@@ -25,7 +22,6 @@ interface ChecklistSection {
   description?: string;
   comment?: string;
   tasks: ChecklistTask[];
-  collapsed?: boolean;
 }
 
 interface ExtendedChecklist extends Omit<Checklist, 'items'> {
@@ -40,13 +36,6 @@ const FIXED_CHECKLIST_TYPES = [
   { key: 'weekly', label: 'Weekly' },
 ];
 
-// Mock sensor data for temperature recording
-const mockSensors = [
-  { id: '1', name: 'Main Fridge', temperature: 3.2 },
-  { id: '2', name: 'Freezer Unit A', temperature: -18.5 },
-  { id: '3', name: 'Prep Room', temperature: 22.1 },
-];
-
 // Mock data with sections
 const mockChecklists: ExtendedChecklist[] = [
   {
@@ -59,7 +48,6 @@ const mockChecklists: ExtendedChecklist[] = [
         id: 'section-1',
         title: 'Temperature Checks',
         comment: 'All fridges and freezers must be within range',
-        collapsed: false,
         tasks: [
           { id: '1', type: 'checkbox', title: 'Check fridge temperatures', completed: true, timestamp: new Date() },
           { id: '2', type: 'temperature', title: 'Record main fridge temperature', completed: true, timestamp: new Date() },
@@ -68,9 +56,8 @@ const mockChecklists: ExtendedChecklist[] = [
       {
         id: 'section-2', 
         title: 'Safety Checks',
-        collapsed: false,
         tasks: [
-          { id: '3', type: 'text', title: 'Verify cleaning supplies', completed: false, textInput: '' },
+          { id: '3', type: 'text', title: 'Verify cleaning supplies', completed: false },
           { id: '4', type: 'checkbox', title: 'Check hand washing stations', completed: false },
         ]
       }
@@ -86,7 +73,6 @@ const mockChecklists: ExtendedChecklist[] = [
       {
         id: 'section-3',
         title: 'Cleaning Tasks',
-        collapsed: false,
         tasks: [
           { id: '5', type: 'checkbox', title: 'Clean all surfaces', completed: true, timestamp: new Date() },
           { id: '6', type: 'checkbox', title: 'Empty trash bins', completed: true, timestamp: new Date() },
@@ -104,7 +90,6 @@ const mockChecklists: ExtendedChecklist[] = [
       {
         id: 'section-4',
         title: 'Temperature Probes',
-        collapsed: false,
         tasks: [
           { id: '8', type: 'temperature', title: 'Probe main fridge', completed: false },
           { id: '9', type: 'temperature', title: 'Probe freezer unit', completed: false },
@@ -121,34 +106,14 @@ const mockChecklists: ExtendedChecklist[] = [
       {
         id: 'section-5',
         title: 'Weekly Audit',
-        collapsed: false,
         tasks: [
-          { id: '10', type: 'text', title: 'Review incident reports', completed: false, textInput: '' },
+          { id: '10', type: 'text', title: 'Review incident reports', completed: false },
           { id: '11', type: 'checkbox', title: 'Check equipment maintenance', completed: false },
         ]
       }
     ]
   }
 ];
-
-// Drag and Drop Component for Web
-const DragDropTask = ({ children, onDragStart, onDragEnd, onDragOver, onDrop, draggable = false, index }: any) => {
-  if (Platform.OS === 'web') {
-    return (
-      <div
-        draggable={draggable}
-        onDragStart={(e) => onDragStart && onDragStart(e, index)}
-        onDragEnd={onDragEnd}
-        onDragOver={onDragOver}
-        onDrop={(e) => onDrop && onDrop(e, index)}
-        style={{ width: '100%' }}
-      >
-        {children}
-      </div>
-    );
-  }
-  return children;
-};
 
 export default function Checklists() {
   const { t } = useTranslation();
@@ -157,109 +122,50 @@ export default function Checklists() {
   const [expandedChecklist, setExpandedChecklist] = useState<string | null>(null);
   const [showSectionOptionsModal, setShowSectionOptionsModal] = useState(false);
   const [showTaskTypeModal, setShowTaskTypeModal] = useState(false);
-  const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const [checklists, setChecklists] = useState(mockChecklists);
   const [editMode, setEditMode] = useState(false);
-  const [editingSectionTitle, setEditingSectionTitle] = useState<string | null>(null);
+    const [editingSectionTitle, setEditingSectionTitle] = useState<string | null>(null);
   const [editingSectionDescription, setEditingSectionDescription] = useState<string | null>(null);
   const [sectionTitleValue, setSectionTitleValue] = useState('');
   const [sectionDescriptionValue, setSectionDescriptionValue] = useState('');
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [sectionComment, setSectionComment] = useState('');
   const [showSectionCommentModal, setShowSectionCommentModal] = useState(false);
-  const [showCommentModal, setShowCommentModal] = useState(false);
+    const [showCommentModal, setShowCommentModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{ checklistId: string; sectionId: string } | null>(null);
   const [addingTaskToSection, setAddingTaskToSection] = useState<{ checklistId: string; sectionId: string; insertIndex?: number } | null>(null);
-  const [submittingChecklist, setSubmittingChecklist] = useState<string | null>(null);
-  const [submittedBy, setSubmittedBy] = useState('');
-  const [draggedTask, setDraggedTask] = useState<{ sectionId: string; taskIndex: number } | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const filteredChecklists = checklists.filter(c => c.type === activeTab);
   const canEdit = user?.role === 'admin';
   const isSensorBased = user?.subscriptionType === 'sensor-based';
-
-  const markAsChanged = () => {
-    setHasUnsavedChanges(true);
-  };
-
-  const toggleSection = (checklistId: string, sectionId: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId 
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId 
-                ? { ...section, collapsed: !section.collapsed }
-                : section
-            )
-          }
-        : checklist
-    ));
-  };
 
   const toggleItem = (checklistId: string, itemId: string) => {
     setChecklists(prev => prev.map(checklist => 
       checklist.id === checklistId 
         ? {
             ...checklist,
-            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
-            completedBy: checklist.status === 'completed' ? undefined : checklist.completedBy,
-            sections: checklist.sections.map(section => ({
-              ...section,
-              tasks: section.tasks.map(item => {
-                if (item.id === itemId) {
-                  // For text tasks, only allow completion if there's text input
-                  if (item.type === 'text' && !item.completed && (!item.textInput || item.textInput.trim() === '')) {
-                    return item; // Don't toggle if no text input
-                  }
-                  return { 
-                    ...item, 
-                    completed: !item.completed, 
-                    timestamp: item.completed ? undefined : new Date() 
-                  };
-                }
-                return item;
-              })
-            }))
-          }
-        : checklist
-    ));
-    markAsChanged();
-  };
-
-  const updateTextInput = (checklistId: string, itemId: string, text: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId 
-        ? {
-            ...checklist,
-            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
-            completedBy: checklist.status === 'completed' ? undefined : checklist.completedBy,
             sections: checklist.sections.map(section => ({
               ...section,
               tasks: section.tasks.map(item => 
                 item.id === itemId 
-                  ? { ...item, textInput: text }
+                  ? { ...item, completed: !item.completed, timestamp: item.completed ? undefined : new Date() }
                   : item
               )
             }))
           }
         : checklist
     ));
-    markAsChanged();
   };
 
-  const recordTemperature = (checklistId: string, itemId: string) => {
-    const temperatureReadings = mockSensors.map(sensor => 
-      `${sensor.name}: ${sensor.temperature}°C`
-    ).join(', ');
 
+  const recordTemperature = (checklistId: string, itemId: string) => {
+    const temperature = (Math.random() * 10 - 5).toFixed(1);
     Alert.alert(
       'Temperature Recorded',
-      `Temperatures automatically recorded:\n${temperatureReadings}`,
+      `Temperature automatically recorded: ${temperature}°C`,
       [{ text: 'OK' }]
     );
     
@@ -267,20 +173,17 @@ export default function Checklists() {
       checklist.id === checklistId 
         ? {
             ...checklist,
-            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
-            completedBy: checklist.status === 'completed' ? undefined : checklist.completedBy,
             sections: checklist.sections.map(section => ({
               ...section,
               tasks: section.tasks.map(item => 
                 item.id === itemId 
-                  ? { ...item, completed: true, timestamp: new Date(), value: temperatureReadings }
+                  ? { ...item, completed: true, timestamp: new Date(), value: `${temperature}°C` }
                   : item
               )
             }))
           }
         : checklist
     ));
-    markAsChanged();
   };
 
   const handleSectionOptions = (checklistId: string, sectionId: string) => {
@@ -308,7 +211,7 @@ export default function Checklists() {
       title: 'Automatic Temperature Recording',
       completed: true,
       timestamp: new Date(),
-      value: mockSensors.map(s => `${s.name}: ${s.temperature}°C`).join(', ')
+      value: '3.2°C (Main Fridge), -18.5°C (Freezer A)'
     };
 
     setChecklists(prev => prev.map(checklist => 
@@ -326,7 +229,6 @@ export default function Checklists() {
 
     setShowSectionOptionsModal(false);
     Alert.alert('Success', 'Temperature readings have been automatically recorded');
-    markAsChanged();
   };
 
   const saveComment = () => {
@@ -349,13 +251,13 @@ export default function Checklists() {
     setShowCommentModal(false);
     setComment('');
     setSelectedSection(null);
-    markAsChanged();
   };
 
   const saveImage = () => {
     if (!selectedSection) return;
 
     const { checklistId, sectionId } = selectedSection;
+    // Mock image URI
     const mockImageUri = 'https://images.pexels.com/photos/4099354/pexels-photo-4099354.jpeg?auto=compress&cs=tinysrgb&w=400';
     
     setChecklists(prev => prev.map(checklist => 
@@ -374,7 +276,6 @@ export default function Checklists() {
     setShowImageModal(false);
     setSelectedSection(null);
     Alert.alert('Success', 'Image has been added to the section');
-    markAsChanged();
   };
 
   const startEditingSectionTitle = (sectionId: string, currentTitle: string) => {
@@ -402,7 +303,6 @@ export default function Checklists() {
     ));
     setEditingSectionTitle(null);
     setSectionTitleValue('');
-    markAsChanged();
   };
 
   const saveSectionDescription = (checklistId: string, sectionId: string) => {
@@ -420,45 +320,6 @@ export default function Checklists() {
     ));
     setEditingSectionDescription(null);
     setSectionDescriptionValue('');
-    markAsChanged();
-  };
-
-  const addSection = (checklistId: string) => {
-    const newSection: ChecklistSection = {
-      id: Date.now().toString(),
-      title: 'New Section',
-      tasks: [],
-      collapsed: false,
-    };
-
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? { ...checklist, sections: [...checklist.sections, newSection] }
-        : checklist
-    ));
-    markAsChanged();
-  };
-
-  const removeSection = (checklistId: string, sectionId: string) => {
-    Alert.alert(
-      'Delete Section',
-      'Are you sure you want to delete this section and all its tasks?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setChecklists(prev => prev.map(checklist => 
-              checklist.id === checklistId
-                ? { ...checklist, sections: checklist.sections.filter(s => s.id !== sectionId) }
-                : checklist
-            ));
-            markAsChanged();
-          },
-        },
-      ]
-    );
   };
 
   const handleAddTaskClick = (checklistId: string, sectionId: string, insertIndex?: number) => {
@@ -478,7 +339,6 @@ export default function Checklists() {
              type === 'temperature' ? 'Record temperature' :
              'Check when completed',
       completed: false,
-      textInput: type === 'text' ? '' : undefined,
     };
 
     setChecklists(prev => prev.map(checklist => 
@@ -505,7 +365,6 @@ export default function Checklists() {
 
     setShowTaskTypeModal(false);
     setAddingTaskToSection(null);
-    markAsChanged();
   };
 
   const removeTask = (checklistId: string, sectionId: string, taskId: string) => {
@@ -521,7 +380,6 @@ export default function Checklists() {
           }
         : checklist
     ));
-    markAsChanged();
   };
 
   const updateTaskTitle = (checklistId: string, sectionId: string, taskId: string, newTitle: string) => {
@@ -544,134 +402,37 @@ export default function Checklists() {
           }
         : checklist
     ));
-    markAsChanged();
-  };
-
-  // Drag and Drop handlers
-  const handleDragStart = (e: any, sectionId: string, taskIndex: number) => {
-    setDraggedTask({ sectionId, taskIndex });
-    if (Platform.OS === 'web') {
-      e.dataTransfer.effectAllowed = 'move';
-    }
-  };
-
-  const handleDragOver = (e: any) => {
-    e.preventDefault();
-    if (Platform.OS === 'web') {
-      e.dataTransfer.dropEffect = 'move';
-    }
-  };
-
-  const handleDrop = (e: any, targetSectionId: string, targetIndex: number, checklistId: string) => {
-    e.preventDefault();
-    
-    if (!draggedTask) return;
-
-    const { sectionId: sourceSectionId, taskIndex: sourceIndex } = draggedTask;
-
-    if (sourceSectionId === targetSectionId && sourceIndex === targetIndex) {
-      setDraggedTask(null);
-      return;
-    }
-
-    setChecklists(prev => prev.map(checklist => {
-      if (checklist.id !== checklistId) return checklist;
-
-      const newSections = [...checklist.sections];
-      const sourceSection = newSections.find(s => s.id === sourceSectionId);
-      const targetSection = newSections.find(s => s.id === targetSectionId);
-
-      if (!sourceSection || !targetSection) return checklist;
-
-      // Remove task from source
-      const [movedTask] = sourceSection.tasks.splice(sourceIndex, 1);
-
-      // Add task to target
-      const insertIndex = targetIndex;
-      targetSection.tasks.splice(insertIndex, 0, movedTask);
-
-      return { ...checklist, sections: newSections };
-    }));
-
-    setDraggedTask(null);
-    markAsChanged();
-  };
-
-  const moveTask = (checklistId: string, sectionId: string, taskIndex: number, direction: 'up' | 'down') => {
-    setChecklists(prev => prev.map(checklist => {
-      if (checklist.id !== checklistId) return checklist;
-
-      return {
-        ...checklist,
-        sections: checklist.sections.map(section => {
-          if (section.id !== sectionId) return section;
-
-          const newTasks = [...section.tasks];
-          const newIndex = direction === 'up' ? taskIndex - 1 : taskIndex + 1;
-
-          if (newIndex < 0 || newIndex >= newTasks.length) return section;
-
-          [newTasks[taskIndex], newTasks[newIndex]] = [newTasks[newIndex], newTasks[taskIndex]];
-
-          return { ...section, tasks: newTasks };
-        })
-      };
-    }));
-    markAsChanged();
   };
 
   const saveChanges = () => {
     setEditMode(false);
-    setHasUnsavedChanges(false);
     Alert.alert('Success', 'Changes saved successfully!');
   };
 
   const cancelEdit = () => {
-    if (hasUnsavedChanges) {
-      Alert.alert(
-        'Unsaved Changes',
-        'You have unsaved changes. Are you sure you want to cancel?',
-        [
-          { text: 'Keep Editing', style: 'cancel' },
-          {
-            text: 'Discard Changes',
-            style: 'destructive',
-            onPress: () => {
-              setEditMode(false);
-              setHasUnsavedChanges(false);
-              // Reset to original state if needed
-            },
+    setEditMode(false);
+    // Reset any unsaved changes here if needed
+  };
+
+  const submitChecklist = (checklistId: string) => {
+    Alert.alert(
+      'Submit Checklist',
+      'Are you sure you want to submit this checklist? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Submit',
+          onPress: () => {
+            setChecklists(prev => prev.map(checklist => 
+              checklist.id === checklistId 
+                ? { ...checklist, status: 'completed', completedBy: user?.name || 'Current User' }
+                : checklist
+            ));
+            Alert.alert('Success', 'Checklist submitted successfully!');
           },
-        ]
-      );
-    } else {
-      setEditMode(false);
-    }
-  };
-
-  const handleSubmitChecklist = (checklistId: string) => {
-    
-    setSubmittingChecklist(checklistId);
-    setSubmittedBy(user?.name || '');
-    setShowSubmitModal(true);
-  };
-
-  const confirmSubmitChecklist = () => {
-    if (!submittingChecklist || !submittedBy.trim()) {
-      Alert.alert('Error', 'Please enter who is submitting this checklist');
-      return;
-    }
-
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === submittingChecklist 
-        ? { ...checklist, status: 'completed', completedBy: submittedBy.trim() }
-        : checklist
-    ));
-
-    setShowSubmitModal(false);
-    setSubmittingChecklist(null);
-    setSubmittedBy('');
-    Alert.alert('Success', 'Checklist submitted successfully!');
+        },
+      ]
+    );
   };
 
   const getStatusColor = (status: string) => {
@@ -687,105 +448,87 @@ export default function Checklists() {
     const taskType = item.type || 'checkbox';
     
     return (
-      <DragDropTask
-        key={item.id}
-        draggable={editMode}
-        index={taskIndex}
-        onDragStart={(e: any) => handleDragStart(e, sectionId, taskIndex)}
-        onDragOver={handleDragOver}
-        onDrop={(e: any) => handleDrop(e, sectionId, taskIndex, checklistId)}
-      >
-        <View style={styles.checklistItemContainer}>
-          <View style={styles.taskRow}>
-            {editMode && (
-              <TouchableOpacity style={styles.dragHandle}>
-                <GripVertical size={16} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
+      <View key={item.id} style={styles.checklistItemContainer}>
+        {/* Insert task button (only in edit mode) */}
+        {editMode && (
+          <TouchableOpacity
+            style={styles.insertTaskButton}
+            onPress={() => handleAddTaskClick(checklistId, sectionId, taskIndex)}
+          >
+            <Text style={styles.insertTaskText}>+ Insert Task</Text>
+          </TouchableOpacity>
+        )}
 
-            <TouchableOpacity
-              style={styles.checklistItem}
-              onPress={() => {
-                if (taskType === 'temperature') {
-                  recordTemperature(checklistId, item.id);
-                } else {
-                  toggleItem(checklistId, item.id);
-                }
-              }}
-            >
-              {taskType === 'temperature' ? (
-                <View style={styles.temperatureButton}>
-                  <Thermometer size={20} color="#7C3AED" />
-                </View>
-              ) : item.completed ? (
-                <CheckCircle size={20} color={Colors.success} />
-              ) : (
-                <Circle size={20} color={Colors.textSecondary} />
-              )}
-              
-              {editMode ? (
-                <TextInput
-                  style={styles.editTaskInput}
-                  value={item.title}
-                  onChangeText={(text) => updateTaskTitle(checklistId, sectionId, item.id, text)}
-                  multiline
-                />
-              ) : (
-                <Text style={[
-                  styles.itemText,
-                  item.completed && styles.completedText
-                ]}>
-                  {item.title}
+        <View style={styles.taskRow}>
+          <TouchableOpacity
+            style={styles.checklistItem}
+            onPress={() => {
+              if (taskType === 'temperature') {
+                recordTemperature(checklistId, item.id);
+              } else {
+                toggleItem(checklistId, item.id);
+              }
+            }}
+          >
+            {taskType === 'temperature' ? (
+              <View style={styles.temperatureButton}>
+                <Thermometer size={20} color="#7C3AED" />
+              </View>
+            ) : item.completed ? (
+              <CheckCircle size={20} color={Colors.success} />
+            ) : (
+              <Circle size={20} color={Colors.textSecondary} />
+            )}
+            
+            {editMode ? (
+              <TextInput
+                style={styles.editTaskInput}
+                value={item.title}
+                onChangeText={(text) => updateTaskTitle(checklistId, sectionId, item.id, text)}
+                multiline
+              />
+            ) : (
+              <Text style={[
+                styles.itemText,
+                item.completed && styles.completedText
+              ]}>
+                {item.title}
+              </Text>
+            )}
+            
+            {item.timestamp && (
+              <View style={styles.itemMeta}>
+                <Clock size={12} color={Colors.textSecondary} />
+                <Text style={styles.itemTime}>
+                  {item.timestamp.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
                 </Text>
-              )}
-              
-              {item.timestamp && (
-                <View style={styles.itemMeta}>
-                  <Clock size={12} color={Colors.textSecondary} />
-                  <Text style={styles.itemTime}>
-                    {item.timestamp.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {editMode && (
-              <TouchableOpacity
-                style={styles.removeTaskButton}
-                onPress={() => removeTask(checklistId, sectionId, item.id)}
-              >
-                <Trash2 size={16} color={Colors.error} />
-              </TouchableOpacity>
+              </View>
             )}
-          </View>
-          
-          {taskType === 'text' && (
-            <TextInput
-              style={[
-                styles.itemInput,
-                item.completed && styles.disabledInput
-              ]}
-              value={item.textInput || ''}
-              onChangeText={(text) => updateTextInput(checklistId, item.id, text)}
-              placeholder="Add notes or measurements..."
-              multiline
-              numberOfLines={2}
-              editable={!item.completed}
-              placeholderTextColor={Colors.textTertiary}
-            />
-          )}
+          </TouchableOpacity>
 
-          {taskType === 'temperature' && item.completed && item.value && (
-            <View style={styles.temperatureReadings}>
-              <Text style={styles.temperatureReadingsTitle}>Recorded Temperatures:</Text>
-              <Text style={styles.temperatureReadingsText}>{item.value}</Text>
-            </View>
+          {editMode && (
+            <TouchableOpacity
+              style={styles.removeTaskButton}
+              onPress={() => removeTask(checklistId, sectionId, item.id)}
+            >
+              <Trash2 size={16} color={Colors.error} />
+            </TouchableOpacity>
           )}
         </View>
-      </DragDropTask>
+        
+        {taskType === 'text' && (
+          <TextInput
+            style={styles.itemInput}
+            placeholder="Add notes or measurements..."
+            multiline
+            numberOfLines={2}
+          />
+        )}
+
+      </View>
     );
   };
 
@@ -864,15 +607,6 @@ export default function Checklists() {
               <Text style={styles.emptyText}>
                 This checklist type hasn't been set up yet.
               </Text>
-              {canEdit && (
-                <TouchableOpacity 
-                  style={styles.createChecklistButton}
-                  onPress={() => setEditMode(true)}
-                >
-                  <Plus size={20} color={Colors.textInverse} />
-                  <Text style={styles.createChecklistButtonText}>Create Checklist</Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : (
             filteredChecklists.map(checklist => (
@@ -902,23 +636,22 @@ export default function Checklists() {
                   </View>
                 </TouchableOpacity>
 
-                {expandedChecklist === checklist.id && (
+{expandedChecklist === checklist.id && (
                   <View style={styles.checklistContent}>
                     {checklist.sections.map(section => (
                       <View key={section.id} style={styles.sectionContainer}>
-                        <TouchableOpacity 
-                          style={styles.sectionHeader}
-                          onPress={() => toggleSection(checklist.id, section.id)}
-                        >
+                        <View style={styles.sectionHeader}>
                           <View style={styles.sectionTitleContainer}>
                             {editMode && editingSectionTitle === section.id ? (
-                              <TextInput
-                                style={styles.sectionTitleInput}
-                                value={sectionTitleValue}
-                                onChangeText={setSectionTitleValue}
-                                onBlur={() => saveSectionTitle(checklist.id, section.id)}
-                                autoFocus
-                              />
+                              <View style={styles.editTitleContainer}>
+                                <TextInput
+                                  style={styles.sectionTitleInput}
+                                  value={sectionTitleValue}
+                                  onChangeText={setSectionTitleValue}
+                                  onBlur={() => saveSectionTitle(checklist.id, section.id)}
+                                  autoFocus
+                                />
+                              </View>
                             ) : (
                               <TouchableOpacity
                                 onPress={() => editMode && startEditingSectionTitle(section.id, section.title)}
@@ -962,60 +695,32 @@ export default function Checklists() {
                             )}
                           </View>
                           
-                          <View style={styles.sectionActions}>
-                            {editMode && (
-                              <TouchableOpacity
-                                style={styles.removeSectionButton}
-                                onPress={() => removeSection(checklist.id, section.id)}
-                              >
-                                <Trash2 size={16} color={Colors.error} />
-                              </TouchableOpacity>
-                            )}
-                            <TouchableOpacity
-                              style={styles.sectionOptionsButton}
-                              onPress={() => handleSectionOptions(checklist.id, section.id)}
-                            >
-                              <MoreVertical size={20} color={Colors.textSecondary} />
-                            </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.sectionOptionsButton}
+                            onPress={() => handleSectionOptions(checklist.id, section.id)}
+                          >
+                            <MoreVertical size={20} color={Colors.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+
+                        {section.comment && (
+                          <View style={styles.sectionComment}>
+                            <MessageSquare size={16} color={Colors.info} />
+                            <Text style={styles.sectionCommentText}>{section.comment}</Text>
                           </View>
-                        </TouchableOpacity>
-
-                        {!section.collapsed && (
-                          <>
-                            {section.comment && (
-                              <View style={styles.sectionComment}>
-                                <MessageSquare size={16} color={Colors.info} />
-                                <Text style={styles.sectionCommentText}>{section.comment}</Text>
-                              </View>
-                            )}
-
-                            <View style={styles.sectionTasks}>
-                              {section.tasks.map((item, index) => renderTaskItem(item, checklist.id, section.id, index))}
-                              
-                              {editMode && (
-                                <TouchableOpacity
-                                  style={styles.addTaskButton}
-                                  onPress={() => handleAddTaskClick(checklist.id, section.id)}
-                                >
-                                  <Plus size={16} color={Colors.info} />
-                                  <Text style={styles.addTaskText}>Add Task</Text>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          </>
                         )}
+
+                        {section.imageUri && (
+                          <View style={styles.sectionImage}>
+                            <Image source={{ uri: section.imageUri }} style={styles.sectionImageView} />
+                          </View>
+                        )}
+
+                        <View style={styles.sectionTasks}>
+                          {section.tasks.map((item) => renderTaskItem(item, checklist.id, section.id))}
+                        </View>
                       </View>
                     ))}
-
-                    {editMode && (
-                      <TouchableOpacity
-                        style={styles.addSectionButton}
-                        onPress={() => addSection(checklist.id)}
-                      >
-                        <Plus size={16} color={Colors.info} />
-                        <Text style={styles.addSectionText}>Add Section</Text>
-                      </TouchableOpacity>
-                    )}
 
                     <View style={styles.checklistActions}>
                       {checklist.completedBy && (
@@ -1027,10 +732,11 @@ export default function Checklists() {
                         </View>
                       )}
                       
+                      
                       {checklist.status !== 'completed' && (
                         <TouchableOpacity
                           style={styles.submitButton}
-                          onPress={() => handleSubmitChecklist(checklist.id)}
+                          onPress={() => submitChecklist(checklist.id)}
                         >
                           <Text style={styles.submitButtonText}>Submit Checklist</Text>
                         </TouchableOpacity>
@@ -1043,52 +749,6 @@ export default function Checklists() {
           )}
         </View>
       </ScrollView>
-
-      {/* Submit Checklist Modal */}
-      <Modal visible={showSubmitModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Submit Checklist</Text>
-              <TouchableOpacity onPress={() => setShowSubmitModal(false)}>
-                <X size={24} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.modalBody}>
-              <Text style={styles.submitLabel}>Submitted by:</Text>
-              <TextInput
-                style={styles.submitInput}
-                value={submittedBy}
-                onChangeText={setSubmittedBy}
-                placeholder="Enter your name"
-                placeholderTextColor={Colors.textTertiary}
-                autoFocus
-              />
-              <Text style={styles.submitNote}>
-                Once submitted, this checklist will be marked as completed and cannot be modified.
-              </Text>
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelModalButton}
-                onPress={() => setShowSubmitModal(false)}
-              >
-                <Text style={styles.cancelModalButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={confirmSubmitChecklist}
-              >
-                <Text style={styles.primaryButtonText}>Submit Checklist</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Section Options Modal */}
       <Modal visible={showSectionOptionsModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1120,7 +780,6 @@ export default function Checklists() {
           </View>
         </View>
       </Modal>
-
       {/* Task Type Selection Modal */}
       <Modal visible={showTaskTypeModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -1189,7 +848,6 @@ export default function Checklists() {
                 multiline
                 numberOfLines={4}
                 autoFocus
-                placeholderTextColor={Colors.textTertiary}
               />
             </View>
 
@@ -1197,6 +855,42 @@ export default function Checklists() {
               <TouchableOpacity style={styles.primaryButton} onPress={saveComment}>
                 <Text style={styles.primaryButtonText}>Save Comment</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Section Comment Modal */}
+      <Modal visible={showSectionCommentModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Section Comment</Text>
+              <TouchableOpacity onPress={() => setShowSectionCommentModal(false)}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <TextInput
+                style={styles.commentInput}
+                value={sectionComment}
+                onChangeText={setSectionComment}
+                placeholder="Add a note for this section..."
+                multiline
+                numberOfLines={4}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.cancelModalButton}
+                onPress={() => setShowSectionCommentModal(false)}
+              >
+                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
             </View>
           </View>
         </View>
@@ -1332,21 +1026,6 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
     paddingHorizontal: 40,
-    marginBottom: 24,
-  },
-  createChecklistButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.info,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  createChecklistButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textInverse,
   },
   checklistCard: {
     backgroundColor: Colors.backgroundPrimary,
@@ -1401,31 +1080,21 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   sectionContainer: {
-    marginBottom: 20,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    overflow: 'hidden',
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: Colors.backgroundPrimary,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  sectionTitleContainer: {
-    flex: 1,
-    marginRight: 12,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: Colors.textPrimary,
-    marginBottom: 4,
   },
   sectionTitleInput: {
     fontSize: 16,
@@ -1434,91 +1103,63 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderMedium,
     paddingVertical: 4,
+    flex: 1,
+    marginRight: 12,
   },
-  sectionDescription: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
+  sectionCommentButton: {
+    padding: 4,
   },
-  sectionDescriptionInput: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    borderWidth: 1,
-    borderColor: Colors.borderMedium,
+  commentIconGradient: {
+    padding: 4,
     borderRadius: 6,
-    padding: 8,
-    marginTop: 8,
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  addDescriptionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 4,
-  },
-  addDescriptionText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.info,
-  },
-  sectionActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  removeSectionButton: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: Colors.error + '20',
-  },
-  sectionOptionsButton: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: Colors.backgroundSecondary,
   },
   sectionComment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.info + '10',
+    backgroundColor: Colors.backgroundSecondary,
     padding: 12,
-    margin: 16,
     borderRadius: 8,
+    marginBottom: 12,
     borderLeftWidth: 3,
     borderLeftColor: Colors.info,
-    gap: 8,
   },
   sectionCommentText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
     fontStyle: 'italic',
-    flex: 1,
   },
   sectionTasks: {
-    padding: 16,
+    gap: 8,
   },
   checklistItemContainer: {
-    marginBottom: 8,
+    marginBottom: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-    paddingBottom: 8,
+    borderBottomColor: Colors.backgroundSecondary,
+  },
+  insertTaskButton: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.info + '20',
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  insertTaskText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.info,
   },
   taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  dragHandle: {
-    padding: 4,
-    cursor: Platform.OS === 'web' ? 'grab' : 'default',
-  },
   checklistItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 8,
     gap: 12,
     flex: 1,
-    paddingVertical: 4,
   },
   temperatureButton: {
     width: 32,
@@ -1537,6 +1178,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   completedText: {
+    textDecorationLine: 'line-through',
     color: Colors.textSecondary,
   },
   editTaskInput: {
@@ -1571,66 +1213,36 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    backgroundColor: Colors.backgroundPrimary,
-    marginTop: 8,
+    backgroundColor: Colors.backgroundSecondary,
+    marginBottom: 8,
     minHeight: 60,
     textAlignVertical: 'top',
-    color: Colors.textPrimary,
   },
-  disabledInput: {
-    backgroundColor: Colors.backgroundSecondary,
-    color: Colors.textSecondary,
-  },
-  temperatureReadings: {
-    backgroundColor: Colors.backgroundPrimary,
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
-  },
-  temperatureReadingsTitle: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  temperatureReadingsText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
-  },
-  addTaskButton: {
+  commentButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.backgroundPrimary,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: Colors.info + '20',
+    borderRadius: 6,
+    gap: 4,
+  },
+  commentButtonText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    color: Colors.info,
+  },
+  addTaskButton: {
+    alignSelf: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: Colors.backgroundSecondary,
     borderRadius: 8,
-    gap: 8,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+    marginTop: 12,
   },
   addTaskText: {
     fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.info,
-  },
-  addSectionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.backgroundSecondary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-  },
-  addSectionText: {
-    fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: Colors.info,
   },
@@ -1641,7 +1253,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
+    borderTopColor: Colors.backgroundSecondary,
   },
   completedBy: {
     flexDirection: 'row',
@@ -1698,28 +1310,6 @@ const styles = StyleSheet.create({
   modalBody: {
     padding: 24,
   },
-  submitLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  submitInput: {
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    marginBottom: 16,
-    color: Colors.textPrimary,
-  },
-  submitNote: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    lineHeight: 20,
-  },
   commentInput: {
     borderWidth: 1,
     borderColor: Colors.borderLight,
@@ -1729,7 +1319,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     minHeight: 120,
     textAlignVertical: 'top',
-    color: Colors.textPrimary,
   },
   taskTypeOptions: {
     padding: 24,
@@ -1805,5 +1394,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     color: Colors.textPrimary,
+  },
+    sectionDescriptionInput: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderMedium,
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 8,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+    addDescriptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  addDescriptionText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.info,
+  },
+    sectionTitleContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+   sectionOptionsButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: Colors.backgroundSecondary,
+  },
+   sectionDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    marginBottom: 8,
   },
 });
