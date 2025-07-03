@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
-import { Plus, X, CreditCard as Edit, Trash2, Users, Mail, Building, Shield } from 'lucide-react-native';
+import { Plus, X, CreditCard as Edit, Trash2, Users, Mail, Building, Shield, Eye, EyeOff, Key } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
 interface User {
@@ -60,12 +60,22 @@ export default function UserManagement() {
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>(mockUsers);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [changingPasswordUser, setChangingPasswordUser] = useState<User | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
+    password: '',
+    confirmPassword: '',
     role: 'user' as const,
     restaurantId: '',
+  });
+  const [passwordChange, setPasswordChange] = useState({
+    newPassword: '',
+    confirmPassword: '',
   });
 
   const getRoleColor = (role: string) => {
@@ -76,9 +86,39 @@ export default function UserManagement() {
     return status === 'active' ? '#10B981' : '#EF4444';
   };
 
+  const validatePassword = (password: string) => {
+    if (password.length < 8) {
+      return 'Password must be at least 8 characters long';
+    }
+    if (!/(?=.*[a-z])/.test(password)) {
+      return 'Password must contain at least one lowercase letter';
+    }
+    if (!/(?=.*[A-Z])/.test(password)) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!/(?=.*\d)/.test(password)) {
+      return 'Password must contain at least one number';
+    }
+    if (!/(?=.*[@$!%*?&])/.test(password)) {
+      return 'Password must contain at least one special character (@$!%*?&)';
+    }
+    return null;
+  };
+
   const handleAddUser = () => {
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.restaurantId) {
+    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim() || !newUser.restaurantId) {
       Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    if (newUser.password !== newUser.confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    const passwordError = validatePassword(newUser.password);
+    if (passwordError) {
+      Alert.alert('Password Error', passwordError);
       return;
     }
 
@@ -90,7 +130,10 @@ export default function UserManagement() {
 
     const user: User = {
       id: Date.now().toString(),
-      ...newUser,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      restaurantId: newUser.restaurantId,
       restaurantName: restaurant.name,
       status: 'active',
       lastLogin: new Date(),
@@ -98,9 +141,9 @@ export default function UserManagement() {
     };
 
     setUsers([...users, user]);
-    setNewUser({ name: '', email: '', role: 'user', restaurantId: '' });
+    setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
     setShowAddModal(false);
-    Alert.alert('Success', 'User created successfully');
+    Alert.alert('Success', `User created successfully with password: ${newUser.password}`);
   };
 
   const handleEditUser = (user: User) => {
@@ -108,6 +151,8 @@ export default function UserManagement() {
     setNewUser({
       name: user.name,
       email: user.email,
+      password: '',
+      confirmPassword: '',
       role: user.role,
       restaurantId: user.restaurantId,
     });
@@ -117,6 +162,11 @@ export default function UserManagement() {
   const handleUpdateUser = () => {
     if (!editingUser) return;
 
+    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.restaurantId) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
     const restaurant = mockRestaurants.find(r => r.id === newUser.restaurantId);
     if (!restaurant) {
       Alert.alert('Error', 'Invalid restaurant selected');
@@ -125,14 +175,52 @@ export default function UserManagement() {
 
     setUsers(users.map(u => 
       u.id === editingUser.id 
-        ? { ...editingUser, ...newUser, restaurantName: restaurant.name }
+        ? { 
+            ...editingUser, 
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            restaurantId: newUser.restaurantId,
+            restaurantName: restaurant.name
+          }
         : u
     ));
 
     setEditingUser(null);
-    setNewUser({ name: '', email: '', role: 'user', restaurantId: '' });
+    setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
     setShowAddModal(false);
     Alert.alert('Success', 'User updated successfully');
+  };
+
+  const handleChangePassword = (user: User) => {
+    setChangingPasswordUser(user);
+    setPasswordChange({ newPassword: '', confirmPassword: '' });
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordUpdate = () => {
+    if (!changingPasswordUser) return;
+
+    if (!passwordChange.newPassword.trim() || !passwordChange.confirmPassword.trim()) {
+      Alert.alert('Error', 'Please fill in all password fields');
+      return;
+    }
+
+    if (passwordChange.newPassword !== passwordChange.confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
+    const passwordError = validatePassword(passwordChange.newPassword);
+    if (passwordError) {
+      Alert.alert('Password Error', passwordError);
+      return;
+    }
+
+    setPasswordChange({ newPassword: '', confirmPassword: '' });
+    setChangingPasswordUser(null);
+    setShowPasswordModal(false);
+    Alert.alert('Success', `Password updated successfully for ${changingPasswordUser.name}`);
   };
 
   const handleDeleteUser = (id: string) => {
@@ -257,6 +345,12 @@ export default function UserManagement() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.actionButton}
+                      onPress={() => handleChangePassword(user)}
+                    >
+                      <Key size={16} color="#F59E0B" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.actionButton}
                       onPress={() => handleEditUser(user)}
                     >
                       <Edit size={16} color="#2563EB" />
@@ -286,13 +380,13 @@ export default function UserManagement() {
               <TouchableOpacity onPress={() => {
                 setShowAddModal(false);
                 setEditingUser(null);
-                setNewUser({ name: '', email: '', role: 'user', restaurantId: '' });
+                setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
               }}>
                 <X size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Full Name *</Text>
                 <TextInput
@@ -316,6 +410,63 @@ export default function UserManagement() {
                   autoCapitalize="none"
                 />
               </View>
+
+              {!editingUser && (
+                <>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Password *</Text>
+                    <View style={styles.passwordContainer}>
+                      <TextInput
+                        style={styles.passwordInput}
+                        value={newUser.password}
+                        onChangeText={(text) => setNewUser(prev => ({ ...prev, password: text }))}
+                        placeholder="Enter password"
+                        placeholderTextColor="#94A3B8"
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        style={styles.eyeButton}
+                        onPress={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOff size={20} color="#64748B" />
+                        ) : (
+                          <Eye size={20} color="#64748B" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.passwordRequirements}>
+                      Password must be at least 8 characters with uppercase, lowercase, number, and special character
+                    </Text>
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Confirm Password *</Text>
+                    <View style={styles.passwordContainer}>
+                      <TextInput
+                        style={styles.passwordInput}
+                        value={newUser.confirmPassword}
+                        onChangeText={(text) => setNewUser(prev => ({ ...prev, confirmPassword: text }))}
+                        placeholder="Confirm password"
+                        placeholderTextColor="#94A3B8"
+                        secureTextEntry={!showConfirmPassword}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        style={styles.eyeButton}
+                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff size={20} color="#64748B" />
+                        ) : (
+                          <Eye size={20} color="#64748B" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              )}
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Restaurant *</Text>
@@ -390,7 +541,7 @@ export default function UserManagement() {
                 onPress={() => {
                   setShowAddModal(false);
                   setEditingUser(null);
-                  setNewUser({ name: '', email: '', role: 'user', restaurantId: '' });
+                  setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
                 }}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -402,6 +553,100 @@ export default function UserManagement() {
                 <Text style={styles.saveButtonText}>
                   {editingUser ? 'Update' : 'Create'} User
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal visible={showPasswordModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Change Password - {changingPasswordUser?.name}
+              </Text>
+              <TouchableOpacity onPress={() => {
+                setShowPasswordModal(false);
+                setChangingPasswordUser(null);
+                setPasswordChange({ newPassword: '', confirmPassword: '' });
+              }}>
+                <X size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>New Password *</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={passwordChange.newPassword}
+                    onChangeText={(text) => setPasswordChange(prev => ({ ...prev, newPassword: text }))}
+                    placeholder="Enter new password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff size={20} color="#64748B" />
+                    ) : (
+                      <Eye size={20} color="#64748B" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.passwordRequirements}>
+                  Password must be at least 8 characters with uppercase, lowercase, number, and special character
+                </Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Confirm New Password *</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={passwordChange.confirmPassword}
+                    onChangeText={(text) => setPasswordChange(prev => ({ ...prev, confirmPassword: text }))}
+                    placeholder="Confirm new password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry={!showConfirmPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff size={20} color="#64748B" />
+                    ) : (
+                      <Eye size={20} color="#64748B" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  setChangingPasswordUser(null);
+                  setPasswordChange({ newPassword: '', confirmPassword: '' });
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handlePasswordUpdate}
+              >
+                <Text style={styles.saveButtonText}>Update Password</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -474,7 +719,6 @@ const styles = StyleSheet.create({
   },
   statNumber: {
     fontSize: 24,
-    
     fontFamily: 'Inter-Bold',
     color: '#1E293B',
     marginBottom: 4,
@@ -610,7 +854,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: '90%',
     maxWidth: 500,
-    maxHeight: '80%',
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -624,10 +868,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: 'Inter-SemiBold',
     color: '#1E293B',
+    flex: 1,
   },
   modalBody: {
     padding: 24,
-    maxHeight: 400,
+    maxHeight: 500,
   },
   formGroup: {
     marginBottom: 20,
@@ -647,6 +892,31 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     backgroundColor: '#FFFFFF',
     color: '#1E293B',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1E293B',
+  },
+  eyeButton: {
+    padding: 12,
+  },
+  passwordRequirements: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 16,
   },
   restaurantButtons: {
     gap: 8,

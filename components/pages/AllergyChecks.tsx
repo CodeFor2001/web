@@ -63,6 +63,7 @@ const mockMatrices = [
 export default function AllergyChecks() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'allergens' | 'matrices'>('allergens');
   const [selectedAllergens, setSelectedAllergens] = useState<string[]>([]);
   const [showMatrixModal, setShowMatrixModal] = useState(false);
   const [selectedMatrix, setSelectedMatrix] = useState<typeof mockMatrices[0] | null>(null);
@@ -128,6 +129,189 @@ export default function AllergyChecks() {
     !dish.allergens.some(allergen => selectedAllergens.includes(allergen))
   );
 
+  const renderAllergensTab = () => (
+    <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('allergyChecks.selectAllergens')}</Text>
+        <View style={styles.allergensGrid}>
+          {allergens.map(allergen => {
+            const key = allergen.toLowerCase().split(' ')[0].replace('/', '');
+            const isSelected = selectedAllergens.includes(key);
+
+            return (
+              <TouchableOpacity
+                key={allergen}
+                style={[styles.allergenCard, isSelected && styles.selectedAllergenCard]}
+                onPress={() => toggleAllergen(allergen)}
+              >
+                <View style={styles.allergenHeader}>
+                  {isSelected ? (
+                    <CheckSquare size={20} color={Colors.info} />
+                  ) : (
+                    <Square size={20} color={Colors.textSecondary} />
+                  )}
+                  <ShieldAlert size={24} color={isSelected ? Colors.info : Colors.textSecondary} />
+                </View>
+                <Text
+                  style={[
+                    styles.allergenText,
+                    isSelected && styles.selectedAllergenText,
+                  ]}
+                >
+                  {allergen}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {selectedAllergens.length > 0 ? (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {t('allergyChecks.dishesContaining', {
+                count: dishesWithAllergens.length,
+              })}
+            </Text>
+            <View style={styles.dishesContainer}>
+              {dishesWithAllergens.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    {t('allergyChecks.noDishesContain')}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.dishesList}>
+                  {dishesWithAllergens.map(dish => (
+                    <View key={dish.id} style={[styles.dishCard, styles.warningDishCard]}>
+                      <View style={styles.dishHeader}>
+                        <Text style={styles.dishName}>{dish.name}</Text>
+                        <View style={styles.warningBadge}>
+                          <ShieldAlert size={16} color={Colors.error} />
+                          <Text style={styles.warningText}>Contains Allergens</Text>
+                        </View>
+                      </View>
+                      <View style={styles.allergenTags}>
+                        {dish.allergens
+                          .filter(a => selectedAllergens.includes(a))
+                          .map(a => (
+                            <View key={a} style={styles.allergenTag}>
+                              <Text style={styles.allergenTagText}>
+                                {a.charAt(0).toUpperCase() + a.slice(1)}
+                              </Text>
+                            </View>
+                          ))}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {t('allergyChecks.dishesFreeOf', {
+                count: dishesFreeOfAllergens.length,
+              })}
+            </Text>
+            <View style={styles.dishesContainer}>
+              {dishesFreeOfAllergens.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    {t('allergyChecks.noDishesAreFree')}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.dishesList}>
+                  {dishesFreeOfAllergens.map(dish => (
+                    <View key={dish.id} style={[styles.dishCard, styles.safeDishCard]}>
+                      <View style={styles.dishHeader}>
+                        <Text style={styles.dishName}>{dish.name}</Text>
+                        <View style={styles.safeBadge}>
+                          <CheckSquare size={16} color={Colors.success} />
+                          <Text style={styles.safeText}>Safe</Text>
+                        </View>
+                      </View>
+                      {dish.allergens.length > 0 && (
+                        <View style={styles.allergenTags}>
+                          <Text style={styles.otherAllergensText}>
+                            {t('allergyChecks.contains', {
+                              allergens: dish.allergens
+                                .map(a => a.charAt(0).toUpperCase() + a.slice(1))
+                                .join(', '),
+                            })}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </>
+      ) : (
+        <View style={styles.instructionsSection}>
+          <ShieldAlert size={48} color={Colors.textSecondary} />
+          <Text style={styles.instructionsTitle}>
+            {t('allergyChecks.selectAllergensToFilter')}
+          </Text>
+          <Text style={styles.instructionsText}>
+            {t('allergyChecks.selectAllergensDescription')}
+          </Text>
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  const renderMatricesTab = () => (
+    <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Allergy Matrices</Text>
+        <Text style={styles.sectionDescription}>
+          View uploaded allergy matrices for comprehensive allergen information
+        </Text>
+        <View style={styles.matricesGrid}>
+          {mockMatrices.map(matrix => (
+            <TouchableOpacity
+              key={matrix.id}
+              style={styles.matrixCard}
+              onPress={() => handleMatrixView(matrix)}
+            >
+              <View style={styles.matrixHeader}>
+                {getFileIcon(matrix.type)}
+                <View style={[
+                  styles.matrixTypeBadge,
+                  { backgroundColor: getFileTypeColor(matrix.type) + '20' }
+                ]}>
+                  <Text style={[
+                    styles.matrixTypeText,
+                    { color: getFileTypeColor(matrix.type) }
+                  ]}>
+                    {matrix.type.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.matrixName}>{matrix.name}</Text>
+              <View style={styles.matrixMeta}>
+                <Text style={styles.matrixSize}>{matrix.size}</Text>
+                <Text style={styles.matrixDate}>
+                  {matrix.uploadDate.toLocaleDateString()}
+                </Text>
+              </View>
+              <View style={styles.viewButton}>
+                <Eye size={16} color={Colors.info} />
+                <Text style={styles.viewButtonText}>View</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -153,185 +337,31 @@ export default function AllergyChecks() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Allergy Matrices Section */}
-        {mockMatrices.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Allergy Matrices</Text>
-            <Text style={styles.sectionDescription}>
-              View uploaded allergy matrices for comprehensive allergen information
+      <View style={styles.tabs}>
+        {[
+          { key: 'allergens', label: 'Allergens' },
+          { key: 'matrices', label: 'Allergy Matrix' },
+        ].map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[
+              styles.tab,
+              activeTab === tab.key && styles.activeTab
+            ]}
+            onPress={() => setActiveTab(tab.key as any)}
+          >
+            <Text style={[
+              styles.tabText,
+              activeTab === tab.key && styles.activeTabText
+            ]}>
+              {tab.label}
             </Text>
-            <View style={styles.matricesGrid}>
-              {mockMatrices.map(matrix => (
-                <TouchableOpacity
-                  key={matrix.id}
-                  style={styles.matrixCard}
-                  onPress={() => handleMatrixView(matrix)}
-                >
-                  <View style={styles.matrixHeader}>
-                    {getFileIcon(matrix.type)}
-                    <View style={[
-                      styles.matrixTypeBadge,
-                      { backgroundColor: getFileTypeColor(matrix.type) + '20' }
-                    ]}>
-                      <Text style={[
-                        styles.matrixTypeText,
-                        { color: getFileTypeColor(matrix.type) }
-                      ]}>
-                        {matrix.type.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.matrixName}>{matrix.name}</Text>
-                  <View style={styles.matrixMeta}>
-                    <Text style={styles.matrixSize}>{matrix.size}</Text>
-                    <Text style={styles.matrixDate}>
-                      {matrix.uploadDate.toLocaleDateString()}
-                    </Text>
-                  </View>
-                  <View style={styles.viewButton}>
-                    <Eye size={16} color={Colors.info} />
-                    <Text style={styles.viewButtonText}>View</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
+          </TouchableOpacity>
+        ))}
+      </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('allergyChecks.selectAllergens')}</Text>
-          <View style={styles.allergensGrid}>
-            {allergens.map(allergen => {
-              const key = allergen.toLowerCase().split(' ')[0].replace('/', '');
-              const isSelected = selectedAllergens.includes(key);
-
-              return (
-                <TouchableOpacity
-                  key={allergen}
-                  style={[styles.allergenCard, isSelected && styles.selectedAllergenCard]}
-                  onPress={() => toggleAllergen(allergen)}
-                >
-                  <View style={styles.allergenHeader}>
-                    {isSelected ? (
-                      <CheckSquare size={20} color={Colors.info} />
-                    ) : (
-                      <Square size={20} color={Colors.textSecondary} />
-                    )}
-                    <ShieldAlert size={24} color={isSelected ? Colors.info : Colors.textSecondary} />
-                  </View>
-                  <Text
-                    style={[
-                      styles.allergenText,
-                      isSelected && styles.selectedAllergenText,
-                    ]}
-                  >
-                    {allergen}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {selectedAllergens.length > 0 ? (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {t('allergyChecks.dishesContaining', {
-                  count: dishesWithAllergens.length,
-                })}
-              </Text>
-              <View style={styles.dishesContainer}>
-                {dishesWithAllergens.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>
-                      {t('allergyChecks.noDishesContain')}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.dishesList}>
-                    {dishesWithAllergens.map(dish => (
-                      <View key={dish.id} style={[styles.dishCard, styles.warningDishCard]}>
-                        <View style={styles.dishHeader}>
-                          <Text style={styles.dishName}>{dish.name}</Text>
-                          <View style={styles.warningBadge}>
-                            <ShieldAlert size={16} color={Colors.error} />
-                            <Text style={styles.warningText}>Contains Allergens</Text>
-                          </View>
-                        </View>
-                        <View style={styles.allergenTags}>
-                          {dish.allergens
-                            .filter(a => selectedAllergens.includes(a))
-                            .map(a => (
-                              <View key={a} style={styles.allergenTag}>
-                                <Text style={styles.allergenTagText}>
-                                  {a.charAt(0).toUpperCase() + a.slice(1)}
-                                </Text>
-                              </View>
-                            ))}
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                {t('allergyChecks.dishesFreeOf', {
-                  count: dishesFreeOfAllergens.length,
-                })}
-              </Text>
-              <View style={styles.dishesContainer}>
-                {dishesFreeOfAllergens.length === 0 ? (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyText}>
-                      {t('allergyChecks.noDishesAreFree')}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.dishesList}>
-                    {dishesFreeOfAllergens.map(dish => (
-                      <View key={dish.id} style={[styles.dishCard, styles.safeDishCard]}>
-                        <View style={styles.dishHeader}>
-                          <Text style={styles.dishName}>{dish.name}</Text>
-                          <View style={styles.safeBadge}>
-                            <CheckSquare size={16} color={Colors.success} />
-                            <Text style={styles.safeText}>Safe</Text>
-                          </View>
-                        </View>
-                        {dish.allergens.length > 0 && (
-                          <View style={styles.allergenTags}>
-                            <Text style={styles.otherAllergensText}>
-                              {t('allergyChecks.contains', {
-                                allergens: dish.allergens
-                                  .map(a => a.charAt(0).toUpperCase() + a.slice(1))
-                                  .join(', '),
-                              })}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-          </>
-        ) : (
-          <View style={styles.instructionsSection}>
-            <ShieldAlert size={48} color={Colors.textSecondary} />
-            <Text style={styles.instructionsTitle}>
-              {t('allergyChecks.selectAllergensToFilter')}
-            </Text>
-            <Text style={styles.instructionsText}>
-              {t('allergyChecks.selectAllergensDescription')}
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+      {activeTab === 'allergens' && renderAllergensTab()}
+      {activeTab === 'matrices' && renderMatricesTab()}
 
       {/* Matrix View Modal */}
       <Modal visible={showMatrixModal} animationType="slide" transparent>
@@ -522,7 +552,33 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: Colors.textSecondary,
   },
-  content: {
+  tabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    backgroundColor: Colors.backgroundPrimary,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  tab: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginRight: 12,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundSecondary,
+  },
+  activeTab: {
+    backgroundColor: Colors.info,
+  },
+  tabText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.textSecondary,
+  },
+  activeTabText: {
+    color: Colors.textInverse,
+  },
+  tabContent: {
     flex: 1,
   },
   section: {

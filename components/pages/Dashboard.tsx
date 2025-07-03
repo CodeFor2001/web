@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import SensorCard from '@/components/SensorCard';
 import ProgressRing from '@/components/ProgressRing';
@@ -56,9 +56,20 @@ const mockCompletionData = {
 export default function Dashboard() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [screenData, setScreenData] = React.useState(Dimensions.get('window'));
+
+  React.useEffect(() => {
+    const onChange = (result: any) => {
+      setScreenData(result.window);
+    };
+
+    const subscription = Dimensions.addEventListener('change', onChange);
+    return () => subscription?.remove();
+  }, []);
 
   const isSensorBased = user?.subscriptionType === 'sensor-based';
   const currentTime = new Date();
+  const isSmallScreen = screenData.width < 768;
 
   const handleAlertsPress = () => {
     console.log('Navigate to alerts');
@@ -92,18 +103,23 @@ export default function Dashboard() {
           </View>
         )}
 
-        {/* 2. Daily Progress Bars */}
+        {/* 2. Daily Progress Bars - Responsive */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Daily Progress</Text>
-          <View style={styles.progressGrid}>
+          <View style={[styles.progressGrid, isSmallScreen && styles.progressGridSmall]}>
             <LinearGradient
               colors={[Colors.success + '20', Colors.success + '10']}
-              style={styles.progressCard}
+              style={[styles.progressCard, isSmallScreen && styles.progressCardSmall]}
             >
-              <View style={styles.progressHeader}>
+              <View style={[styles.progressHeader, isSmallScreen && styles.progressHeaderSmall]}>
                 <Text style={styles.progressTitle}>Opening Checklist</Text>
-                <Text style={styles.progressPercentage}>{mockCompletionData.openingChecklist}%</Text>
+                {!isSmallScreen && (
+                  <Text style={styles.progressPercentage}>{mockCompletionData.openingChecklist}%</Text>
+                )}
               </View>
+              {isSmallScreen && (
+                <Text style={styles.progressPercentageSmall}>{mockCompletionData.openingChecklist}%</Text>
+              )}
               <View style={styles.progressBar}>
                 <View 
                   style={[
@@ -122,12 +138,17 @@ export default function Dashboard() {
 
             <LinearGradient
               colors={[Colors.info + '20', Colors.info + '10']}
-              style={styles.progressCard}
+              style={[styles.progressCard, isSmallScreen && styles.progressCardSmall]}
             >
-              <View style={styles.progressHeader}>
+              <View style={[styles.progressHeader, isSmallScreen && styles.progressHeaderSmall]}>
                 <Text style={styles.progressTitle}>Closing Checklist</Text>
-                <Text style={styles.progressPercentage}>{mockCompletionData.closingChecklist}%</Text>
+                {!isSmallScreen && (
+                  <Text style={styles.progressPercentage}>{mockCompletionData.closingChecklist}%</Text>
+                )}
               </View>
+              {isSmallScreen && (
+                <Text style={styles.progressPercentageSmall}>{mockCompletionData.closingChecklist}%</Text>
+              )}
               <View style={styles.progressBar}>
                 <View 
                   style={[
@@ -146,12 +167,17 @@ export default function Dashboard() {
 
             <LinearGradient
               colors={[Colors.warning + '20', Colors.warning + '10']}
-              style={styles.progressCard}
+              style={[styles.progressCard, isSmallScreen && styles.progressCardSmall]}
             >
-              <View style={styles.progressHeader}>
+              <View style={[styles.progressHeader, isSmallScreen && styles.progressHeaderSmall]}>
                 <Text style={styles.progressTitle}>Compliance Level</Text>
-                <Text style={styles.progressPercentage}>{mockCompletionData.compliance}%</Text>
+                {!isSmallScreen && (
+                  <Text style={styles.progressPercentage}>{mockCompletionData.compliance}%</Text>
+                )}
               </View>
+              {isSmallScreen && (
+                <Text style={styles.progressPercentageSmall}>{mockCompletionData.compliance}%</Text>
+              )}
               <View style={styles.progressBar}>
                 <View 
                   style={[
@@ -244,6 +270,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     color: Colors.textSecondary,
+    flexShrink: 1,
   },
   alertsButton: {
     flexDirection: 'row',
@@ -285,6 +312,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
   },
+  progressGridSmall: {
+    flexDirection: 'column',
+  },
   progressCard: {
     flex: 1,
     padding: 20,
@@ -297,11 +327,20 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  progressCardSmall: {
+    flex: 0,
+    marginBottom: 16,
+  },
   progressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  progressHeaderSmall: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
   progressTitle: {
     fontSize: 16,
@@ -312,6 +351,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: 'Inter-Bold',
     color: Colors.textPrimary,
+  },
+  progressPercentageSmall: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: Colors.textPrimary,
+    marginBottom: 8,
   },
   progressBar: {
     height: 8,

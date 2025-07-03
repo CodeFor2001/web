@@ -33,6 +33,10 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForgotPassword = () => {
+    router.push('/forgot-password');
+  };
+
   const demoCredentials = [
     { role: 'Super Admin', email: 'superadmin@vigilix.tech', password: 'Vigilix@123' },
     { role: 'Restaurant Admin (Sensor)', email: 'admin@vigilix.tech', password: 'Vigilix@123' },
@@ -110,6 +114,13 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+              
+              <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={handleForgotPassword}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
@@ -271,6 +282,16 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     padding: 16,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    paddingVertical: 4,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.gradientStart,
   },
   loginButton: {
     borderRadius: 8,

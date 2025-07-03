@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Modal, TextInput } from 'react-native';
-import { Globe, Bell, Users, Shield, ChevronRight, Mail, Smartphone } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Modal, TextInput, Alert } from 'react-native';
+import { Globe, Bell, Users, Shield, ChevronRight, Mail, Smartphone, Key, Eye, EyeOff } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
+import { useAuth } from '@/contexts/AuthContext';
 
-interface SettingItem {
+interface SettingItem { 
   id: string;
   title: string;
   subtitle?: string;
@@ -18,6 +19,7 @@ interface SettingItem {
 
 export default function Settings() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -28,18 +30,71 @@ export default function Settings() {
 
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [tempEmail, setTempEmail] = useState(settings.alertEmail);
+  const [passwordData, setPasswordData] = useState({
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showPasswords, setShowPasswords] = useState({
+    old: false,
+    new: false,
+    confirm: false,
+  });
 
   const languages = [
     { code: 'en', name: 'English' },
-    { code: 'es', name: 'Español' },
-    { code: 'fr', name: 'Français' },
-    { code: 'de', name: 'Deutsch' },
-    { code: 'it', name: 'Italiano' },
-    { code: 'pt', name: 'Português' },
-    { code: 'zh', name: '中文' },
-    { code: 'ja', name: '日本語' }
+    // { code: 'es', name: 'Español' },
+    // { code: 'fr', name: 'Français' },
+    // { code: 'de', name: 'Deutsch' },
+    // { code: 'it', name: 'Italiano' },
+    // { code: 'pt', name: 'Português' },
+    // { code: 'zh', name: '中文' },
+    // { code: 'ja', name: '日本語' }
   ];
+
+  const validatePassword = (password: string) => {
+    if (password.length < 8) {
+      return 'Password must be at least 8 characters long';
+    }
+    if (!/(?=.*[a-z])/.test(password)) {
+      return 'Password must contain at least one lowercase letter';
+    }
+    if (!/(?=.*[A-Z])/.test(password)) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!/(?=.*\d)/.test(password)) {
+      return 'Password must contain at least one number';
+    }
+    if (!/(?=.*[@$!%*?&])/.test(password)) {
+      return 'Password must contain at least one special character (@$!%*?&)';
+    }
+    return null;
+  };
+
+  const handlePasswordChange = () => {
+    if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      Alert.alert('Error', 'Please fill in all password fields');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      Alert.alert('Error', 'New passwords do not match');
+      return;
+    }
+
+    const passwordError = validatePassword(passwordData.newPassword);
+    if (passwordError) {
+      Alert.alert('Password Error', passwordError);
+      return;
+    }
+
+    // In a real app, you would verify the old password with the server
+    setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    setShowPasswordModal(false);
+    Alert.alert('Success', 'Password changed successfully');
+  };
 
   const toggleSetting = (key: string) => {
     setSettings(prev => ({
@@ -104,6 +159,13 @@ export default function Settings() {
       title: t('settings.system'),
       items: [
         {
+          id: 'changePassword',
+          title: 'Change Password',
+          subtitle: 'Update your account password',
+          icon: Key,
+          type: 'navigation' as const,
+        },
+        {
           id: 'userManagement',
           title: t('settings.userManagement'),
           subtitle: t('settings.userManagementDesc'),
@@ -130,7 +192,11 @@ export default function Settings() {
       setTempEmail(settings.alertEmail);
       setShowEmailModal(true);
     } else if (item.type === 'navigation') {
-      console.log('Navigate to:', item.id);
+      if (item.id === 'changePassword') {
+        setShowPasswordModal(true);
+      } else {
+        console.log('Navigate to:', item.id);
+      }
     }
   };
 
@@ -289,6 +355,121 @@ export default function Settings() {
           </View>
         </View>
       </Modal>
+
+      {/* Change Password Modal */}
+      <Modal visible={showPasswordModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <TouchableOpacity onPress={() => {
+                setShowPasswordModal(false);
+                setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+              }}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.passwordContainer} showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={styles.passwordLabel}>Current Password *</Text>
+                <View style={styles.passwordInputContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={passwordData.oldPassword}
+                    onChangeText={(text) => setPasswordData(prev => ({ ...prev, oldPassword: text }))}
+                    placeholder="Enter current password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry={!showPasswords.old}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPasswords(prev => ({ ...prev, old: !prev.old }))}
+                  >
+                    {showPasswords.old ? (
+                      <EyeOff size={20} color="#64748B" />
+                    ) : (
+                      <Eye size={20} color="#64748B" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.passwordLabel}>New Password *</Text>
+                <View style={styles.passwordInputContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={passwordData.newPassword}
+                    onChangeText={(text) => setPasswordData(prev => ({ ...prev, newPassword: text }))}
+                    placeholder="Enter new password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry={!showPasswords.new}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
+                  >
+                    {showPasswords.new ? (
+                      <EyeOff size={20} color="#64748B" />
+                    ) : (
+                      <Eye size={20} color="#64748B" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.passwordRequirements}>
+                  Password must be at least 8 characters with uppercase, lowercase, number, and special character
+                </Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.passwordLabel}>Confirm New Password *</Text>
+                <View style={styles.passwordInputContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={passwordData.confirmPassword}
+                    onChangeText={(text) => setPasswordData(prev => ({ ...prev, confirmPassword: text }))}
+                    placeholder="Confirm new password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry={!showPasswords.confirm}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
+                  >
+                    {showPasswords.confirm ? (
+                      <EyeOff size={20} color="#64748B" />
+                    ) : (
+                      <Eye size={20} color="#64748B" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.passwordActions}>
+              <TouchableOpacity 
+                style={styles.passwordCancelButton}
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                }}
+              >
+                <Text style={styles.passwordCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.passwordSaveButton}
+                onPress={handlePasswordChange}
+              >
+                <Text style={styles.passwordSaveText}>Change Password</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -419,9 +600,9 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    width: '80%',
+    width: '90%',
     maxWidth: 400,
-    maxHeight: '70%',
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -531,6 +712,76 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emailSaveText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+  },
+  // Password modal styles
+  passwordContainer: {
+    padding: 24,
+    maxHeight: 400,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  passwordLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  passwordInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1E293B',
+  },
+  eyeButton: {
+    padding: 12,
+  },
+  passwordRequirements: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  passwordActions: {
+    flexDirection: 'row',
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    gap: 12,
+  },
+  passwordCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+  passwordCancelText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#64748B',
+  },
+  passwordSaveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#2563EB',
+    alignItems: 'center',
+  },
+  passwordSaveText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
