@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/Colors';
 import { Bell } from 'lucide-react-native';
 
-// Mock data for sensors
+// Mock data for sensors - expanded to 7 sensors
 const mockSensors: Sensor[] = [
   {
     id: '1',
@@ -24,13 +24,13 @@ const mockSensors: Sensor[] = [
   },
   {
     id: '2',
-    name: 'Freezer Unit A',
+    name: 'Freezer A',
     type: 'freezer',
     currentTemp: -18.5,
     targetMin: -20,
     targetMax: -15,
     status: 'ok',
-    location: 'Storage Room',
+    location: 'Storage',
     lastUpdate: new Date(),
   },
   {
@@ -42,6 +42,50 @@ const mockSensors: Sensor[] = [
     targetMax: 25,
     status: 'warning',
     location: 'Prep Kitchen',
+    lastUpdate: new Date(),
+  },
+  {
+    id: '4',
+    name: 'Walk-in Cooler',
+    type: 'fridge',
+    currentTemp: 4.1,
+    targetMin: 2,
+    targetMax: 6,
+    status: 'ok',
+    location: 'Storage',
+    lastUpdate: new Date(),
+  },
+  {
+    id: '5',
+    name: 'Freezer B',
+    type: 'freezer',
+    currentTemp: -19.2,
+    targetMin: -22,
+    targetMax: -16,
+    status: 'ok',
+    location: 'Back Storage',
+    lastUpdate: new Date(),
+  },
+  {
+    id: '6',
+    name: 'Display Fridge',
+    type: 'fridge',
+    currentTemp: 2.8,
+    targetMin: 1,
+    targetMax: 4,
+    status: 'ok',
+    location: 'Front Counter',
+    lastUpdate: new Date(),
+  },
+  {
+    id: '7',
+    name: 'Dining Area',
+    type: 'ambient',
+    currentTemp: 21.5,
+    targetMin: 20,
+    targetMax: 24,
+    status: 'ok',
+    location: 'Dining Room',
     lastUpdate: new Date(),
   },
 ];
@@ -93,10 +137,16 @@ export default function Dashboard() {
         {isSensorBased && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Live Temperature Monitoring</Text>
-            <View style={styles.sensorsGrid}>
+            <View style={[
+              styles.sensorsGrid,
+              isSmallScreen && styles.sensorsGridSmall
+            ]}>
               {mockSensors.map(sensor => (
-                <View key={sensor.id} style={styles.sensorWrapper}>
-                  <SensorCard sensor={sensor} />
+                <View key={sensor.id} style={[
+                  styles.sensorWrapper,
+                  isSmallScreen && styles.sensorWrapperSmall
+                ]}>
+                  <SensorCard sensor={sensor} compact={true} />
                 </View>
               ))}
             </View>
@@ -302,11 +352,19 @@ const styles = StyleSheet.create({
   sensorsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 24,
+    gap: 16,
+  },
+  sensorsGridSmall: {
+    gap: 12,
   },
   sensorWrapper: {
     flex: 1,
-    minWidth: 300,
+    minWidth: 280,
+    maxWidth: 320,
+  },
+  sensorWrapperSmall: {
+    minWidth: 240,
+    maxWidth: 280,
   },
   progressGrid: {
     flexDirection: 'row',

@@ -52,6 +52,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.0.10",
+    "@types/react-native-draggable-flatlist": "^1.1.1",
     "cross-env": "^7.0.3",
     "typescript": "~5.8.3"
   }

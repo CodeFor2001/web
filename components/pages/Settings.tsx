@@ -6,6 +6,7 @@ import i18n from '@/i18n';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
 
 interface SettingItem { 
   id: string;
@@ -20,6 +21,7 @@ interface SettingItem {
 export default function Settings() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const router = useRouter();
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -103,6 +105,10 @@ export default function Settings() {
     }));
   };
 
+  const handleUserManagement = () => {
+    router.push('/user-management');
+  };
+
   const settingsSections = [
     {
       title: t('settings.general'),
@@ -165,13 +171,13 @@ export default function Settings() {
           icon: Key,
           type: 'navigation' as const,
         },
-        {
+        ...(user?.role === 'admin' ? [{
           id: 'userManagement',
           title: t('settings.userManagement'),
           subtitle: t('settings.userManagementDesc'),
           icon: Users,
           type: 'navigation' as const,
-        },
+        }] : []),
         {
           id: 'security',
           title: t('settings.securityPrivacy'),
@@ -194,6 +200,8 @@ export default function Settings() {
     } else if (item.type === 'navigation') {
       if (item.id === 'changePassword') {
         setShowPasswordModal(true);
+      } else if (item.id === 'userManagement') {
+        handleUserManagement();
       } else {
         console.log('Navigate to:', item.id);
       }
@@ -786,4 +794,4 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
   },
-});
+}); 

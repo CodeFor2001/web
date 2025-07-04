@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
-import { Plus, X, CreditCard as Edit, Trash2, Users, Mail, Building, Shield, Eye, EyeOff, Key } from 'lucide-react-native';
+import { Plus, X, CreditCard as Edit, Trash2, Users, Mail, Building, Shield, Eye, EyeOff, Key, ArrowLeft } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
 
 interface User {
   id: string;
@@ -38,27 +40,13 @@ const mockUsers: User[] = [
     lastLogin: new Date(Date.now() - 2 * 60 * 60 * 1000),
     createdAt: new Date(2024, 0, 20),
   },
-  {
-    id: '4',
-    name: 'Non-Sensor Admin',
-    email: 'admin-nonsensor@vigilix.tech',
-    role: 'restaurant-admin',
-    restaurantId: 'rest2',
-    restaurantName: 'Non-Sensor Restaurant',
-    status: 'active',
-    lastLogin: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    createdAt: new Date(2024, 1, 20),
-  },
-];
-
-const mockRestaurants = [
-  { id: 'rest1', name: 'Demo Restaurant' },
-  { id: 'rest2', name: 'Non-Sensor Restaurant' },
 ];
 
 export default function UserManagement() {
   const { t } = useTranslation();
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const { user: currentUser } = useAuth();
+  const router = useRouter();
+  const [users, setUsers] = useState<User[]>(mockUsers.filter(u => u.restaurantId === currentUser?.restaurantId));
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -70,8 +58,7 @@ export default function UserManagement() {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'user' as const,
-    restaurantId: '',
+    role: 'user' as const, // Only allow 'user' role
   });
   const [passwordChange, setPasswordChange] = useState({
     newPassword: '',
@@ -106,7 +93,7 @@ export default function UserManagement() {
   };
 
   const handleAddUser = () => {
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim() || !newUser.restaurantId) {
+    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -122,26 +109,20 @@ export default function UserManagement() {
       return;
     }
 
-    const restaurant = mockRestaurants.find(r => r.id === newUser.restaurantId);
-    if (!restaurant) {
-      Alert.alert('Error', 'Invalid restaurant selected');
-      return;
-    }
-
     const user: User = {
       id: Date.now().toString(),
       name: newUser.name,
       email: newUser.email,
-      role: newUser.role,
-      restaurantId: newUser.restaurantId,
-      restaurantName: restaurant.name,
+      role: 'user', // Force role to be 'user'
+      restaurantId: currentUser?.restaurantId || 'rest1',
+      restaurantName: currentUser?.restaurantName || 'Demo Restaurant',
       status: 'active',
       lastLogin: new Date(),
       createdAt: new Date(),
     };
 
     setUsers([...users, user]);
-    setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
+    setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user' });
     setShowAddModal(false);
     Alert.alert('Success', `User created successfully with password: ${newUser.password}`);
   };
@@ -153,8 +134,7 @@ export default function UserManagement() {
       email: user.email,
       password: '',
       confirmPassword: '',
-      role: user.role,
-      restaurantId: user.restaurantId,
+      role: 'user', // Force role to be 'user'
     });
     setShowAddModal(true);
   };
@@ -162,14 +142,8 @@ export default function UserManagement() {
   const handleUpdateUser = () => {
     if (!editingUser) return;
 
-    if (!newUser.name.trim() || !newUser.email.trim() || !newUser.restaurantId) {
+    if (!newUser.name.trim() || !newUser.email.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-
-    const restaurant = mockRestaurants.find(r => r.id === newUser.restaurantId);
-    if (!restaurant) {
-      Alert.alert('Error', 'Invalid restaurant selected');
       return;
     }
 
@@ -179,15 +153,13 @@ export default function UserManagement() {
             ...editingUser, 
             name: newUser.name,
             email: newUser.email,
-            role: newUser.role,
-            restaurantId: newUser.restaurantId,
-            restaurantName: restaurant.name
+            role: 'user', // Force role to be 'user'
           }
         : u
     ));
 
     setEditingUser(null);
-    setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
+    setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user' });
     setShowAddModal(false);
     Alert.alert('Success', 'User updated successfully');
   };
@@ -247,12 +219,21 @@ export default function UserManagement() {
     ));
   };
 
+  const handleBack = () => {
+    router.back();
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>User Management</Text>
-          <Text style={styles.subtitle}>Manage users across all restaurants</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <ArrowLeft size={24} color="#1E293B" />
+          </TouchableOpacity>
+          <View>
+            <Text style={styles.title}>User Management</Text>
+            <Text style={styles.subtitle}>Manage users for {currentUser?.restaurantName}</Text>
+          </View>
         </View>
         <TouchableOpacity 
           style={styles.addButton}
@@ -316,10 +297,6 @@ export default function UserManagement() {
                         <Mail size={14} color="#64748B" />
                         <Text style={styles.detailText}>{user.email}</Text>
                       </View>
-                      <View style={styles.detailRow}>
-                        <Building size={14} color="#64748B" />
-                        <Text style={styles.detailText}>{user.restaurantName}</Text>
-                      </View>
                       <Text style={styles.lastLoginText}>
                         Last login: {user.lastLogin.toLocaleDateString()} at {user.lastLogin.toLocaleTimeString()}
                       </Text>
@@ -380,7 +357,7 @@ export default function UserManagement() {
               <TouchableOpacity onPress={() => {
                 setShowAddModal(false);
                 setEditingUser(null);
-                setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
+                setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user' });
               }}>
                 <X size={24} color="#64748B" />
               </TouchableOpacity>
@@ -469,69 +446,17 @@ export default function UserManagement() {
               )}
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Restaurant *</Text>
-                <View style={styles.restaurantButtons}>
-                  {mockRestaurants.map(restaurant => (
-                    <TouchableOpacity
-                      key={restaurant.id}
-                      style={[
-                        styles.restaurantButton,
-                        newUser.restaurantId === restaurant.id && styles.selectedRestaurantButton
-                      ]}
-                      onPress={() => setNewUser(prev => ({ ...prev, restaurantId: restaurant.id }))}
-                    >
-                      <Building size={16} color={newUser.restaurantId === restaurant.id ? '#2563EB' : '#64748B'} />
-                      <Text style={[
-                        styles.restaurantButtonText,
-                        newUser.restaurantId === restaurant.id && styles.selectedRestaurantText
-                      ]}>
-                        {restaurant.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
                 <Text style={styles.label}>Role</Text>
-                <View style={styles.roleButtons}>
-                  <TouchableOpacity
-                    style={[
-                      styles.roleButton,
-                      newUser.role === 'user' && styles.selectedRoleButton
-                    ]}
-                    onPress={() => setNewUser(prev => ({ ...prev, role: 'user' }))}
-                  >
-                    <Users size={16} color={newUser.role === 'user' ? '#2563EB' : '#64748B'} />
-                    <Text style={[
-                      styles.roleButtonText,
-                      newUser.role === 'user' && styles.selectedRoleText
-                    ]}>
-                      User
-                    </Text>
-                    <Text style={styles.roleDescription}>
-                      Can create incidents, deliveries, and complete checklists
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.roleButton,
-                      newUser.role === 'restaurant-admin' && styles.selectedRoleButton
-                    ]}
-                    onPress={() => setNewUser(prev => ({ ...prev, role: 'restaurant-admin' }))}
-                  >
-                    <Shield size={16} color={newUser.role === 'restaurant-admin' ? '#7C3AED' : '#64748B'} />
-                    <Text style={[
-                      styles.roleButtonText,
-                      newUser.role === 'restaurant-admin' && styles.selectedRoleText
-                    ]}>
-                      Restaurant Admin
-                    </Text>
-                    <Text style={styles.roleDescription}>
-                      Can manage checklists, allergens, and sensor calibration
-                    </Text>
-                  </TouchableOpacity>
+                <View style={styles.roleInfo}>
+                  <Users size={16} color="#2563EB" />
+                  <Text style={styles.roleInfoText}>Restaurant User</Text>
+                  <Text style={styles.roleInfoDescription}>
+                    Can create incidents, deliveries, and complete checklists
+                  </Text>
                 </View>
+                <Text style={styles.roleNote}>
+                  Note: Only restaurant users can be created. Contact your system administrator to create restaurant admins.
+                </Text>
               </View>
             </ScrollView>
 
@@ -541,7 +466,7 @@ export default function UserManagement() {
                 onPress={() => {
                   setShowAddModal(false);
                   setEditingUser(null);
-                  setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user', restaurantId: '' });
+                  setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'user' });
                 }}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -669,6 +594,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 16,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
   },
   title: {
     fontSize: 32,
@@ -918,59 +854,34 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 16,
   },
-  restaurantButtons: {
-    gap: 8,
-  },
-  restaurantButton: {
+  roleInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#EFF6FF',
+    padding: 16,
     borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#2563EB',
     gap: 8,
   },
-  selectedRestaurantButton: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-  },
-  restaurantButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: '#64748B',
-  },
-  selectedRestaurantText: {
-    color: '#2563EB',
-  },
-  roleButtons: {
-    gap: 12,
-  },
-  roleButton: {
-    borderWidth: 2,
-    borderColor: '#E2E8F0',
-    borderRadius: 8,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  selectedRoleButton: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-  },
-  roleButtonText: {
+  roleInfoText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: '#64748B',
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  selectedRoleText: {
     color: '#2563EB',
+    flex: 1,
   },
-  roleDescription: {
+  roleInfoDescription: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
+    color: '#64748B',
+    flex: 2,
+  },
+  roleNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
     color: '#94A3B8',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   modalActions: {
     flexDirection: 'row',

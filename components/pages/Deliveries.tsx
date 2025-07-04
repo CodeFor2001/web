@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Dimensions,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import {
@@ -124,6 +125,20 @@ export default function Deliveries() {
     probeTemperature: 0,
   });
 
+  const [screenData, setScreenData] = React.useState(Dimensions.get('window'));
+
+  React.useEffect(() => {
+    const onChange = (result: any) => {
+      setScreenData(result.window);
+    };
+
+    const subscription = Dimensions.addEventListener('change', onChange);
+    return () => subscription?.remove();
+  }, []);
+
+  const isPortrait = screenData.height > screenData.width;
+  const isSmallScreen = screenData.width < 768;
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'accepted':
@@ -178,7 +193,10 @@ export default function Deliveries() {
           <Text style={styles.title}>{t('deliveries.title')}</Text>
           <Text style={styles.subtitle}>{t('deliveries.subtitle')}</Text>
         </View>
-        <View style={styles.headerActions}>
+        <View style={[
+          styles.headerActions,
+          (isPortrait || isSmallScreen) && styles.headerActionsVertical
+        ]}>
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => setShowSupplierForm(true)}
@@ -498,6 +516,11 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  headerActionsVertical: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
   },
   primaryButton: {
     flexDirection: 'row',

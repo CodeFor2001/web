@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
-import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera,Plus, MoreVertical } from 'lucide-react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert, PanResponder, Animated, Dimensions } from 'react-native';
+import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera, Plus, MoveVertical as MoreVertical, GripVertical } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Checklist, ChecklistItem } from '@/types';
 import { useTranslation } from 'react-i18next';
@@ -51,14 +51,17 @@ const mockChecklists: ExtendedChecklist[] = [
         tasks: [
           { id: '1', type: 'checkbox', title: 'Check fridge temperatures', completed: true, timestamp: new Date() },
           { id: '2', type: 'temperature', title: 'Record main fridge temperature', completed: true, timestamp: new Date() },
+          { id: '3', type: 'text', title: 'Note any temperature anomalies', completed: false },
+          { id: '4', type: 'checkbox', title: 'Verify freezer seals', completed: false },
         ]
       },
       {
         id: 'section-2', 
         title: 'Safety Checks',
         tasks: [
-          { id: '3', type: 'text', title: 'Verify cleaning supplies', completed: false },
-          { id: '4', type: 'checkbox', title: 'Check hand washing stations', completed: false },
+          { id: '5', type: 'text', title: 'Verify cleaning supplies', completed: false },
+          { id: '6', type: 'checkbox', title: 'Check hand washing stations', completed: false },
+          { id: '7', type: 'checkbox', title: 'Inspect fire safety equipment', completed: false },
         ]
       }
     ]
@@ -74,9 +77,9 @@ const mockChecklists: ExtendedChecklist[] = [
         id: 'section-3',
         title: 'Cleaning Tasks',
         tasks: [
-          { id: '5', type: 'checkbox', title: 'Clean all surfaces', completed: true, timestamp: new Date() },
-          { id: '6', type: 'checkbox', title: 'Empty trash bins', completed: true, timestamp: new Date() },
-          { id: '7', type: 'checkbox', title: 'Lock all doors', completed: true, timestamp: new Date() },
+          { id: '8', type: 'checkbox', title: 'Clean all surfaces', completed: true, timestamp: new Date() },
+          { id: '9', type: 'checkbox', title: 'Empty trash bins', completed: true, timestamp: new Date() },
+          { id: '10', type: 'checkbox', title: 'Lock all doors', completed: true, timestamp: new Date() },
         ]
       }
     ]
@@ -91,8 +94,8 @@ const mockChecklists: ExtendedChecklist[] = [
         id: 'section-4',
         title: 'Temperature Probes',
         tasks: [
-          { id: '8', type: 'temperature', title: 'Probe main fridge', completed: false },
-          { id: '9', type: 'temperature', title: 'Probe freezer unit', completed: false },
+          { id: '11', type: 'temperature', title: 'Probe main fridge', completed: false },
+          { id: '12', type: 'temperature', title: 'Probe freezer unit', completed: false },
         ]
       }
     ]
@@ -107,13 +110,327 @@ const mockChecklists: ExtendedChecklist[] = [
         id: 'section-5',
         title: 'Weekly Audit',
         tasks: [
-          { id: '10', type: 'text', title: 'Review incident reports', completed: false },
-          { id: '11', type: 'checkbox', title: 'Check equipment maintenance', completed: false },
+          { id: '13', type: 'text', title: 'Review incident reports', completed: false },
+          { id: '14', type: 'checkbox', title: 'Check equipment maintenance', completed: false },
         ]
       }
     ]
   }
 ];
+
+interface DraggableTaskItemProps {
+  item: ChecklistTask;
+  checklistId: string;
+  sectionId: string;
+  taskIndex: number;
+  editMode: boolean;
+  onTaskToggle: (checklistId: string, taskId: string) => void;
+  onTaskEdit: (checklistId: string, sectionId: string, taskId: string, title: string) => void;
+  onTaskDelete: (checklistId: string, sectionId: string, taskId: string) => void;
+  onTaskMove: (checklistId: string, sectionId: string, fromIndex: number, toIndex: number) => void;
+  recordTemperature: (checklistId: string, taskId: string) => void;
+  isSensorBased: boolean;
+  draggedIndex: number | null;
+  targetIndex: number | null;
+  onDragStart: (index: number) => void;
+  onDragEnd: () => void;
+  onDragMove: (targetIndex: number) => void;
+}
+
+function DraggableTaskItem({
+  item,
+  checklistId,
+  sectionId,
+  taskIndex,
+  editMode,
+  onTaskToggle,
+  onTaskEdit,
+  onTaskDelete,
+  onTaskMove,
+  recordTemperature,
+  isSensorBased,
+  draggedIndex,
+  targetIndex,
+  onDragStart,
+  onDragEnd,
+  onDragMove
+}: DraggableTaskItemProps) {
+  const pan = useRef(new Animated.ValueXY()).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [containerLayout, setContainerLayout] = useState({ y: 0, height: 0 });
+  const taskType = item.type || 'checkbox';
+
+  const isBeingDragged = draggedIndex === taskIndex;
+  const isTargetPosition = targetIndex === taskIndex && draggedIndex !== null && draggedIndex !== taskIndex;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => editMode,
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return editMode && Math.abs(gestureState.dy) > 10;
+      },
+      onPanResponderGrant: (evt) => {
+        if (!editMode) return;
+        setIsDragging(true);
+        setDragStartY(evt.nativeEvent.pageY);
+        onDragStart(taskIndex);
+        
+        pan.setOffset({
+          x: pan.x._value,
+          y: pan.y._value,
+        });
+
+        // Scale up the dragged item
+        Animated.spring(scale, {
+          toValue: 1.05,
+          useNativeDriver: false,
+        }).start();
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (!editMode || !isDragging) return;
+        
+        Animated.event([null, { dx: pan.x, dy: pan.y }], {
+          useNativeDriver: false,
+        })(evt, gestureState);
+
+        // Calculate target position based on drag position
+        const currentY = evt.nativeEvent.pageY;
+        const deltaY = currentY - dragStartY;
+        const itemHeight = 80; // Approximate height of each task item
+        const threshold = itemHeight / 2;
+
+        if (Math.abs(deltaY) > threshold) {
+          const direction = deltaY > 0 ? 1 : -1;
+          const newTargetIndex = Math.max(0, Math.min(taskIndex + direction, 10)); // Assuming max 10 items
+          onDragMove(newTargetIndex);
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (!editMode || !isDragging) return;
+        
+        setIsDragging(false);
+        pan.flattenOffset();
+
+        // Calculate final position
+        const moveThreshold = 40;
+        const currentY = evt.nativeEvent.pageY;
+        const deltaY = currentY - dragStartY;
+
+        if (Math.abs(deltaY) > moveThreshold) {
+          const direction = deltaY > 0 ? 1 : -1;
+          const newIndex = Math.max(0, taskIndex + direction);
+          if (newIndex !== taskIndex) {
+            onTaskMove(checklistId, sectionId, taskIndex, newIndex);
+          }
+        }
+
+        // Reset animations
+        Animated.parallel([
+          Animated.spring(pan, {
+            toValue: { x: 0, y: 0 },
+            useNativeDriver: false,
+          }),
+          Animated.spring(scale, {
+            toValue: 1,
+            useNativeDriver: false,
+          })
+        ]).start();
+
+        onDragEnd();
+      },
+    })
+  ).current;
+
+  const animatedStyle = {
+    transform: [
+      { translateX: pan.x },
+      { translateY: pan.y },
+      { scale: scale },
+    ],
+    opacity: isDragging ? 0.9 : 1,
+    elevation: isDragging ? 10 : 2,
+    shadowOpacity: isDragging ? 0.3 : 0.1,
+    zIndex: isDragging ? 1000 : 1,
+  };
+
+  // Container shift animation for target position
+  const containerShiftStyle = isTargetPosition ? {
+    transform: [
+      { 
+        translateY: draggedIndex !== null && draggedIndex < taskIndex ? -80 : 80 
+      }
+    ],
+  } : {};
+
+  return (
+    <Animated.View 
+      style={[
+        styles.checklistItemContainer, 
+        animatedStyle,
+        !isBeingDragged && containerShiftStyle
+      ]}
+      onLayout={(event) => {
+        const { y, height } = event.nativeEvent.layout;
+        setContainerLayout({ y, height });
+      }}
+    >
+      {/* Background container that shifts */}
+      <View style={[
+        styles.taskBackgroundContainer,
+        isTargetPosition && styles.targetBackgroundContainer,
+        isBeingDragged && styles.draggedBackgroundContainer
+      ]}>
+        <View style={styles.taskRow}>
+          {editMode && (
+            <View {...panResponder.panHandlers} style={styles.dragHandle}>
+              <GripVertical size={16} color={Colors.textSecondary} />
+            </View>
+          )}
+          
+          <TouchableOpacity
+            style={styles.checklistItem}
+            onPress={() => {
+              if (taskType === 'temperature') {
+                recordTemperature(checklistId, item.id);
+              } else {
+                onTaskToggle(checklistId, item.id);
+              }
+            }}
+          >
+            {taskType === 'temperature' ? (
+              <View style={styles.temperatureButton}>
+                <Thermometer size={20} color="#7C3AED" />
+              </View>
+            ) : item.completed ? (
+              <CheckCircle size={20} color={Colors.success} />
+            ) : (
+              <Circle size={20} color={Colors.textSecondary} />
+            )}
+            
+            {editMode ? (
+              <TextInput
+                style={styles.editTaskInput}
+                value={item.title}
+                onChangeText={(text) => onTaskEdit(checklistId, sectionId, item.id, text)}
+                multiline
+              />
+            ) : (
+              <Text style={[
+                styles.itemText,
+                item.completed && styles.completedText
+              ]}>
+                {item.title}
+              </Text>
+            )}
+            
+            {item.timestamp && (
+              <View style={styles.itemMeta}>
+                <Clock size={12} color={Colors.textSecondary} />
+                <Text style={styles.itemTime}>
+                  {item.timestamp.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {editMode && (
+            <TouchableOpacity
+              style={styles.removeTaskButton}
+              onPress={() => onTaskDelete(checklistId, sectionId, item.id)}
+            >
+              <Trash2 size={16} color={Colors.error} />
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {taskType === 'text' && (
+          <TextInput
+            style={styles.itemInput}
+            placeholder="Add notes or measurements..."
+            multiline
+            numberOfLines={2}
+          />
+        )}
+      </View>
+    </Animated.View>
+  );
+}
+
+interface TaskListProps {
+  tasks: ChecklistTask[];
+  checklistId: string;
+  sectionId: string;
+  editMode: boolean;
+  onTaskToggle: (checklistId: string, taskId: string) => void;
+  onTaskEdit: (checklistId: string, sectionId: string, taskId: string, title: string) => void;
+  onTaskDelete: (checklistId: string, sectionId: string, taskId: string) => void;
+  onTaskMove: (checklistId: string, sectionId: string, fromIndex: number, toIndex: number) => void;
+  recordTemperature: (checklistId: string, taskId: string) => void;
+  isSensorBased: boolean;
+}
+
+function TaskList({
+  tasks,
+  checklistId,
+  sectionId,
+  editMode,
+  onTaskToggle,
+  onTaskEdit,
+  onTaskDelete,
+  onTaskMove,
+  recordTemperature,
+  isSensorBased
+}: TaskListProps) {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [targetIndex, setTargetIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+    setTargetIndex(null);
+  };
+
+  const handleDragMove = (newTargetIndex: number) => {
+    if (newTargetIndex >= 0 && newTargetIndex < tasks.length && newTargetIndex !== draggedIndex) {
+      setTargetIndex(newTargetIndex);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setTargetIndex(null);
+  };
+
+  return (
+    <View style={styles.sectionTasks}>
+      {tasks.map((item, taskIndex) => (
+        <DraggableTaskItem
+          key={item.id}
+          item={item}
+          checklistId={checklistId}
+          sectionId={sectionId}
+          taskIndex={taskIndex}
+          editMode={editMode}
+          onTaskToggle={onTaskToggle}
+          onTaskEdit={onTaskEdit}
+          onTaskDelete={onTaskDelete}
+          onTaskMove={onTaskMove}
+          recordTemperature={recordTemperature}
+          isSensorBased={isSensorBased}
+          draggedIndex={draggedIndex}
+          targetIndex={targetIndex}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragMove={handleDragMove}
+        />
+      ))}
+    </View>
+  );
+}
 
 export default function Checklists() {
   const { t } = useTranslation();
@@ -126,14 +443,14 @@ export default function Checklists() {
   const [comment, setComment] = useState('');
   const [checklists, setChecklists] = useState(mockChecklists);
   const [editMode, setEditMode] = useState(false);
-    const [editingSectionTitle, setEditingSectionTitle] = useState<string | null>(null);
+  const [editingSectionTitle, setEditingSectionTitle] = useState<string | null>(null);
   const [editingSectionDescription, setEditingSectionDescription] = useState<string | null>(null);
   const [sectionTitleValue, setSectionTitleValue] = useState('');
   const [sectionDescriptionValue, setSectionDescriptionValue] = useState('');
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [sectionComment, setSectionComment] = useState('');
   const [showSectionCommentModal, setShowSectionCommentModal] = useState(false);
-    const [showCommentModal, setShowCommentModal] = useState(false);
+  const [showCommentModal, setShowCommentModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{ checklistId: string; sectionId: string } | null>(null);
   const [addingTaskToSection, setAddingTaskToSection] = useState<{ checklistId: string; sectionId: string; insertIndex?: number } | null>(null);
@@ -160,7 +477,6 @@ export default function Checklists() {
     ));
   };
 
-
   const recordTemperature = (checklistId: string, itemId: string) => {
     const temperature = (Math.random() * 10 - 5).toFixed(1);
     Alert.alert(
@@ -181,6 +497,31 @@ export default function Checklists() {
                   : item
               )
             }))
+          }
+        : checklist
+    ));
+  };
+
+  const handleTaskMove = (checklistId: string, sectionId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? {
+                    ...section,
+                    tasks: (() => {
+                      const newTasks = [...section.tasks];
+                      const [movedTask] = newTasks.splice(fromIndex, 1);
+                      newTasks.splice(toIndex, 0, movedTask);
+                      return newTasks;
+                    })()
+                  }
+                : section
+            )
           }
         : checklist
     ));
@@ -444,94 +785,6 @@ export default function Checklists() {
     }
   };
 
-  const renderTaskItem = (item: any, checklistId: string, sectionId: string, taskIndex: number) => {
-    const taskType = item.type || 'checkbox';
-    
-    return (
-      <View key={item.id} style={styles.checklistItemContainer}>
-        {/* Insert task button (only in edit mode) */}
-        {editMode && (
-          <TouchableOpacity
-            style={styles.insertTaskButton}
-            onPress={() => handleAddTaskClick(checklistId, sectionId, taskIndex)}
-          >
-            <Text style={styles.insertTaskText}>+ Insert Task</Text>
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.taskRow}>
-          <TouchableOpacity
-            style={styles.checklistItem}
-            onPress={() => {
-              if (taskType === 'temperature') {
-                recordTemperature(checklistId, item.id);
-              } else {
-                toggleItem(checklistId, item.id);
-              }
-            }}
-          >
-            {taskType === 'temperature' ? (
-              <View style={styles.temperatureButton}>
-                <Thermometer size={20} color="#7C3AED" />
-              </View>
-            ) : item.completed ? (
-              <CheckCircle size={20} color={Colors.success} />
-            ) : (
-              <Circle size={20} color={Colors.textSecondary} />
-            )}
-            
-            {editMode ? (
-              <TextInput
-                style={styles.editTaskInput}
-                value={item.title}
-                onChangeText={(text) => updateTaskTitle(checklistId, sectionId, item.id, text)}
-                multiline
-              />
-            ) : (
-              <Text style={[
-                styles.itemText,
-                item.completed && styles.completedText
-              ]}>
-                {item.title}
-              </Text>
-            )}
-            
-            {item.timestamp && (
-              <View style={styles.itemMeta}>
-                <Clock size={12} color={Colors.textSecondary} />
-                <Text style={styles.itemTime}>
-                  {item.timestamp.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {editMode && (
-            <TouchableOpacity
-              style={styles.removeTaskButton}
-              onPress={() => removeTask(checklistId, sectionId, item.id)}
-            >
-              <Trash2 size={16} color={Colors.error} />
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        {taskType === 'text' && (
-          <TextInput
-            style={styles.itemInput}
-            placeholder="Add notes or measurements..."
-            multiline
-            numberOfLines={2}
-          />
-        )}
-
-      </View>
-    );
-  };
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -636,7 +889,7 @@ export default function Checklists() {
                   </View>
                 </TouchableOpacity>
 
-{expandedChecklist === checklist.id && (
+                {expandedChecklist === checklist.id && (
                   <View style={styles.checklistContent}>
                     {checklist.sections.map(section => (
                       <View key={section.id} style={styles.sectionContainer}>
@@ -710,15 +963,18 @@ export default function Checklists() {
                           </View>
                         )}
 
-                        {section.imageUri && (
-                          <View style={styles.sectionImage}>
-                            <Image source={{ uri: section.imageUri }} style={styles.sectionImageView} />
-                          </View>
-                        )}
-
-                        <View style={styles.sectionTasks}>
-                          {section.tasks.map((item) => renderTaskItem(item, checklist.id, section.id))}
-                        </View>
+                        <TaskList
+                          tasks={section.tasks}
+                          checklistId={checklist.id}
+                          sectionId={section.id}
+                          editMode={editMode}
+                          onTaskToggle={toggleItem}
+                          onTaskEdit={updateTaskTitle}
+                          onTaskDelete={removeTask}
+                          onTaskMove={handleTaskMove}
+                          recordTemperature={recordTemperature}
+                          isSensorBased={isSensorBased}
+                        />
                       </View>
                     ))}
 
@@ -731,7 +987,6 @@ export default function Checklists() {
                           </Text>
                         </View>
                       )}
-                      
                       
                       {checklist.status !== 'completed' && (
                         <TouchableOpacity
@@ -749,6 +1004,8 @@ export default function Checklists() {
           )}
         </View>
       </ScrollView>
+
+      {/* Section Options Modal */}
       <Modal visible={showSectionOptionsModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -780,6 +1037,7 @@ export default function Checklists() {
           </View>
         </View>
       </Modal>
+
       {/* Task Type Selection Modal */}
       <Modal visible={showTaskTypeModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -860,37 +1118,27 @@ export default function Checklists() {
         </View>
       </Modal>
 
-      {/* Section Comment Modal */}
-      <Modal visible={showSectionCommentModal} animationType="slide" transparent>
+      {/* Image Modal */}
+      <Modal visible={showImageModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Section Comment</Text>
-              <TouchableOpacity onPress={() => setShowSectionCommentModal(false)}>
-                <X size={24} color={Colors.textSecondary} />
+              <Text style={styles.modalTitle}>Add Image</Text>
+              <TouchableOpacity onPress={() => setShowImageModal(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
             
             <View style={styles.modalBody}>
-              <TextInput
-                style={styles.commentInput}
-                value={sectionComment}
-                onChangeText={setSectionComment}
-                placeholder="Add a note for this section..."
-                multiline
-                numberOfLines={4}
-                autoFocus
-              />
+              <Text style={styles.imageNote}>
+                In a real app, this would open the camera or photo library to capture/select an image.
+              </Text>
             </View>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={styles.cancelModalButton}
-                onPress={() => setShowSectionCommentModal(false)}
-              >
-                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={saveImage}>
+                <Text style={styles.primaryButtonText}>Add Sample Image</Text>
               </TouchableOpacity>
-
             </View>
           </View>
         </View>
@@ -1091,6 +1339,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  sectionTitleContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
   sectionTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
@@ -1106,53 +1358,105 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  sectionCommentButton: {
-    padding: 4,
+  sectionDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    marginBottom: 8,
   },
-  commentIconGradient: {
-    padding: 4,
+  sectionDescriptionInput: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderMedium,
     borderRadius: 6,
+    padding: 8,
+    marginTop: 8,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  addDescriptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  addDescriptionText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: Colors.info,
+  },
+  sectionOptionsButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: Colors.backgroundSecondary,
   },
   sectionComment: {
+    flexDirection: 'row',
     backgroundColor: Colors.backgroundSecondary,
     padding: 12,
     borderRadius: 8,
     marginBottom: 12,
     borderLeftWidth: 3,
     borderLeftColor: Colors.info,
+    gap: 8,
   },
   sectionCommentText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
     fontStyle: 'italic',
+    flex: 1,
   },
   sectionTasks: {
     gap: 8,
   },
   checklistItemContainer: {
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.backgroundSecondary,
-  },
-  insertTaskButton: {
-    alignSelf: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: Colors.info + '20',
-    borderRadius: 6,
     marginBottom: 8,
   },
-  insertTaskText: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.info,
+  taskBackgroundContainer: {
+    backgroundColor: Colors.backgroundPrimary,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  targetBackgroundContainer: {
+    backgroundColor: Colors.info + '10',
+    borderColor: Colors.info + '40',
+    shadowColor: Colors.info,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  draggedBackgroundContainer: {
+    backgroundColor: Colors.backgroundSecondary,
+    borderColor: Colors.info,
+    shadowColor: Colors.info,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  dragHandle: {
+    padding: 8,
+    marginRight: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 6,
+    minHeight: 32,
+    minWidth: 32,
   },
   checklistItem: {
     flexDirection: 'row',
@@ -1214,37 +1518,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     backgroundColor: Colors.backgroundSecondary,
-    marginBottom: 8,
+    marginTop: 8,
     minHeight: 60,
     textAlignVertical: 'top',
-  },
-  commentButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: Colors.info + '20',
-    borderRadius: 6,
-    gap: 4,
-  },
-  commentButtonText: {
-    fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    color: Colors.info,
-  },
-  addTaskButton: {
-    alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 8,
-    marginTop: 12,
-  },
-  addTaskText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.info,
   },
   checklistActions: {
     flexDirection: 'row',
@@ -1320,6 +1596,13 @@ const styles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: 'top',
   },
+  imageNote: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   taskTypeOptions: {
     padding: 24,
     gap: 16,
@@ -1350,18 +1633,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
     gap: 12,
-  },
-  cancelModalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: Colors.backgroundSecondary,
-    alignItems: 'center',
-  },
-  cancelModalButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textSecondary,
   },
   primaryButton: {
     flex: 1,
@@ -1394,43 +1665,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     color: Colors.textPrimary,
-  },
-    sectionDescriptionInput: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    borderWidth: 1,
-    borderColor: Colors.borderMedium,
-    borderRadius: 6,
-    padding: 8,
-    marginTop: 8,
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-    addDescriptionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 4,
-  },
-  addDescriptionText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.info,
-  },
-    sectionTitleContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-   sectionOptionsButton: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: Colors.backgroundSecondary,
-  },
-   sectionDescription: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    marginBottom: 8,
   },
 });
