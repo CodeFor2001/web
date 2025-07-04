@@ -18,6 +18,7 @@ import {
   CircleAlert as AlertCircle,
   X,
   Save,
+  ChevronDown,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '@/constants/Colors';
@@ -103,12 +104,29 @@ const mockSuppliers: Supplier[] = [
     email: 'mike@drygoods.com',
     address: '789 Warehouse Blvd, City, State 54321',
   },
+  {
+    id: '4',
+    name: 'Meat & Poultry Supply',
+    contactName: 'Lisa Wong',
+    telephone: '+1 555-0321',
+    email: 'lisa@meatpoultry.com',
+    address: '321 Butcher Lane, City, State 98765',
+  },
+  {
+    id: '5',
+    name: 'Dairy Products Inc.',
+    contactName: 'Robert Davis',
+    telephone: '+1 555-0654',
+    email: 'robert@dairyproducts.com',
+    address: '654 Milk Road, City, State 13579',
+  },
 ];
 
 export default function Deliveries() {
   const { t } = useTranslation();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers);
   const [newSupplier, setNewSupplier] = useState({
     name: '',
@@ -184,6 +202,11 @@ export default function Deliveries() {
       address: '',
     });
     setShowSupplierForm(false);
+  };
+
+  const handleSupplierSelect = (supplierName: string) => {
+    setNewDelivery(prev => ({ ...prev, supplier: supplierName }));
+    setShowSupplierDropdown(false);
   };
 
   return (
@@ -288,26 +311,18 @@ export default function Deliveries() {
             <ScrollView style={styles.formContainer}>
               <View style={styles.formGroup}>
                 <Text style={styles.label}>{t('deliveries.supplier')}</Text>
-                <ScrollView style={styles.supplierList} showsVerticalScrollIndicator={false}>
-                  {suppliers.map((supplier) => (
-                    <TouchableOpacity
-                      key={supplier.id}
-                      style={[
-                        styles.supplierOption,
-                        newDelivery.supplier === supplier.name && styles.selectedSupplier
-                      ]}
-                      onPress={() => setNewDelivery((prev) => ({ ...prev, supplier: supplier.name }))}
-                    >
-                      <Text style={[
-                        styles.supplierName,
-                        newDelivery.supplier === supplier.name && styles.selectedSupplierText
-                      ]}>
-                        {supplier.name}
-                      </Text>
-                      <Text style={styles.supplierContact}>{supplier.contactName}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setShowSupplierDropdown(true)}
+                >
+                  <Text style={[
+                    styles.dropdownText,
+                    !newDelivery.supplier && styles.dropdownPlaceholder
+                  ]}>
+                    {newDelivery.supplier || 'Select a supplier'}
+                  </Text>
+                  <ChevronDown size={20} color="#64748B" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.formGroup}>
@@ -404,6 +419,41 @@ export default function Deliveries() {
               <TouchableOpacity style={styles.submitButton} onPress={handleAddDelivery}>
                 <Text style={styles.submitButtonText}>{t('deliveries.addDelivery')}</Text>
               </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Supplier Dropdown Modal */}
+      <Modal visible={showSupplierDropdown} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.dropdownModal}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownTitle}>Select Supplier</Text>
+              <TouchableOpacity onPress={() => setShowSupplierDropdown(false)}>
+                <X size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.dropdownList} showsVerticalScrollIndicator={false}>
+              {suppliers.map((supplier) => (
+                <TouchableOpacity
+                  key={supplier.id}
+                  style={[
+                    styles.supplierOption,
+                    newDelivery.supplier === supplier.name && styles.selectedSupplier
+                  ]}
+                  onPress={() => handleSupplierSelect(supplier.name)}
+                >
+                  <Text style={[
+                    styles.supplierName,
+                    newDelivery.supplier === supplier.name && styles.selectedSupplierText
+                  ]}>
+                    {supplier.name}
+                  </Text>
+                  <Text style={styles.supplierContact}>{supplier.contactName}</Text>
+                  <Text style={styles.supplierPhone}>{supplier.telephone}</Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         </View>
@@ -665,6 +715,7 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 600,
     maxHeight: '80%',
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -684,7 +735,7 @@ const styles = StyleSheet.create({
     maxHeight: 500,
   },
   formGroup: {
-    marginBottom: 24,
+    marginBottom: 50,
   },
   label: {
     fontSize: 14,
@@ -705,34 +756,74 @@ const styles = StyleSheet.create({
     height: 80,
     textAlignVertical: 'top',
   },
-  supplierList: {
-    maxHeight: 150,
-  },
-  supplierOption: {
-    padding: 12,
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 8,
-    marginBottom: 8,
+    padding: 12,
     backgroundColor: '#FFFFFF',
+  },
+  dropdownText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#1E293B',
+  },
+  dropdownPlaceholder: {
+    color: '#94A3B8',
+  },
+  dropdownModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '60%',
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  dropdownTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1E293B',
+  },
+  dropdownList: {
+    maxHeight: 300,
+  },
+  supplierOption: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   selectedSupplier: {
     backgroundColor: '#EFF6FF',
-    borderColor: '#237ECD',
   },
   supplierName: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#1E293B',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   selectedSupplierText: {
     color: '#237ECD',
   },
   supplierContact: {
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#64748B',
+    marginBottom: 2,
+  },
+  supplierPhone: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#94A3B8',
   },
   statusToggles: {
     gap: 8,

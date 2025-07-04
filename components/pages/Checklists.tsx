@@ -1,12 +1,41 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
-import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, CreditCard as Edit3, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera, Plus, MoveVertical as MoreVertical, GripVertical } from 'lucide-react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Platform, Image } from 'react-native';
+import { CircleCheck as CheckCircle, Circle, Clock, User, MessageSquare, X, Save, Trash2, Type, SquareCheck as CheckSquare, Thermometer, Camera, Plus, MoreVertical as MoreVertical, GripVertical, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Slider from '@react-native-community/slider';
 import { Checklist, ChecklistItem } from '@/types';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { Colors } from '@/constants/Colors';
-import { Platform } from 'react-native';
+import DragHandle from '@/components/DragHandle';
+import * as DocumentPicker from 'expo-document-picker';
+
+// Web drag and drop
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Mobile drag and drop
+import DraggableFlatList, {
+  ScaleDecorator,
+  RenderItemParams,
+} from 'react-native-draggable-flatlist';
 
 interface ChecklistTask {
   id: string;
@@ -16,7 +45,7 @@ interface ChecklistTask {
   completed: boolean;
   timestamp?: Date;
   value?: string;
-  textInput?: string;
+  textValue?: string;
 }
 
 interface ChecklistSection {
@@ -24,6 +53,7 @@ interface ChecklistSection {
   title: string;
   description?: string;
   comment?: string;
+  imageUri?: string;
   tasks: ChecklistTask[];
   collapsed?: boolean;
 }
@@ -40,11 +70,15 @@ const FIXED_CHECKLIST_TYPES = [
   { key: 'weekly', label: 'Weekly' },
 ];
 
-// Mock sensor data for temperature recording
+// Mock sensor data
 const mockSensors = [
-  { id: '1', name: 'Main Fridge', temperature: 3.2 },
-  { id: '2', name: 'Freezer Unit A', temperature: -18.5 },
-  { id: '3', name: 'Prep Room', temperature: 22.1 },
+  { id: '1', name: 'Main Fridge', currentTemp: 3.2 },
+  { id: '2', name: 'Freezer Unit A', currentTemp: -18.5 },
+  { id: '3', name: 'Prep Room', currentTemp: 22.1 },
+  { id: '4', name: 'Walk-in Cooler', currentTemp: 4.8 },
+  { id: '5', name: 'Freezer Unit B', currentTemp: -19.2 },
+  { id: '6', name: 'Display Fridge', currentTemp: 2.8 },
+  { id: '7', name: 'Dining Area', currentTemp: 21.5 },
 ];
 
 // Mock data with sections
@@ -70,7 +104,7 @@ const mockChecklists: ExtendedChecklist[] = [
         title: 'Safety Checks',
         collapsed: false,
         tasks: [
-          { id: '3', type: 'text', title: 'Verify cleaning supplies', completed: false, textInput: '' },
+          { id: '3', type: 'text', title: 'Verify cleaning supplies', completed: false, textValue: '' },
           { id: '4', type: 'checkbox', title: 'Check hand washing stations', completed: false },
         ]
       }
@@ -123,7 +157,7 @@ const mockChecklists: ExtendedChecklist[] = [
         title: 'Weekly Audit',
         collapsed: false,
         tasks: [
-          { id: '10', type: 'text', title: 'Review incident reports', completed: false, textInput: '' },
+          { id: '10', type: 'text', title: 'Review incident reports', completed: false, textValue: '' },
           { id: '11', type: 'checkbox', title: 'Check equipment maintenance', completed: false },
         ]
       }
@@ -131,24 +165,363 @@ const mockChecklists: ExtendedChecklist[] = [
   }
 ];
 
-// Drag and Drop Component for Web
-const DragDropTask = ({ children, onDragStart, onDragEnd, onDragOver, onDrop, draggable = false, index }: any) => {
-  if (Platform.OS === 'web') {
-    return (
-      <div
-        draggable={draggable}
-        onDragStart={(e) => onDragStart && onDragStart(e, index)}
-        onDragEnd={onDragEnd}
-        onDragOver={onDragOver}
-        onDrop={(e) => onDrop && onDrop(e, index)}
-        style={{ width: '100%' }}
-      >
-        {children}
-      </div>
-    );
-  }
-  return children;
-};
+// Sortable Task Item for Web
+function SortableTaskItem({ 
+  task, 
+  checklistId, 
+  sectionId, 
+  editMode, 
+  onTaskToggle, 
+  onTaskUpdate, 
+  onTaskDelete, 
+  onRecordTemperature,
+  isSensorBased 
+}: {
+  task: ChecklistTask;
+  checklistId: string;
+  sectionId: string;
+  editMode: boolean;
+  onTaskToggle: (checklistId: string, sectionId: string, taskId: string) => void;
+  onTaskUpdate: (checklistId: string, sectionId: string, taskId: string, updates: Partial<ChecklistTask>) => void;
+  onTaskDelete: (checklistId: string, sectionId: string, taskId: string) => void;
+  onRecordTemperature: (checklistId: string, sectionId: string, taskId: string) => void;
+  isSensorBased: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const [manualTemp, setManualTemp] = useState(0);
+
+  const handleTaskToggle = () => {
+    if (task.type === 'text' && !task.completed && (!task.textValue || task.textValue.trim() === '')) {
+      Alert.alert('Text Required', 'Please fill in the text before marking this task as complete.');
+      return;
+    }
+    
+    if (task.type === 'temperature') {
+      onRecordTemperature(checklistId, sectionId, task.id);
+    } else {
+      onTaskToggle(checklistId, sectionId, task.id);
+    }
+  };
+
+  const handleTextChange = (text: string) => {
+    onTaskUpdate(checklistId, sectionId, task.id, { textValue: text });
+  };
+
+  const handleTitleChange = (title: string) => {
+    onTaskUpdate(checklistId, sectionId, task.id, { title });
+  };
+
+  const handleManualTempChange = (temp: number) => {
+    setManualTemp(temp);
+    const tempValue = `Manual reading: ${temp.toFixed(1)}°C`;
+    onTaskUpdate(checklistId, sectionId, task.id, { 
+      value: tempValue,
+      completed: true,
+      timestamp: new Date()
+    });
+  };
+
+  return (
+    <View ref={setNodeRef} style={[styles.taskItemContainer, style]}>
+      <View style={styles.taskRow}>
+        {editMode && (
+          <TouchableOpacity 
+            style={styles.dragHandle} 
+            {...attributes} 
+            {...listeners}
+          >
+            <DragHandle />
+          </TouchableOpacity>
+        )}
+        
+        <TouchableOpacity
+          style={styles.taskToggle}
+          onPress={handleTaskToggle}
+        >
+          {task.type === 'temperature' ? (
+            <View style={styles.temperatureButton}>
+              <Thermometer size={16} color="#7C3AED" />
+            </View>
+          ) : task.completed ? (
+            <CheckCircle size={18} color={Colors.success} />
+          ) : (
+            <Circle size={18} color={Colors.textSecondary} />
+          )}
+        </TouchableOpacity>
+        
+        <View style={styles.taskContent}>
+          {editMode ? (
+            <TextInput
+              style={styles.editTaskInput}
+              value={task.title}
+              onChangeText={handleTitleChange}
+              placeholder="Task description..."
+              placeholderTextColor={Colors.textTertiary}
+            />
+          ) : (
+            <Text style={[
+              styles.taskTitle,
+              task.completed && styles.completedTask
+            ]}>
+              {task.title}
+            </Text>
+          )}
+          
+          {task.timestamp && (
+            <View style={styles.taskMeta}>
+              <Clock size={10} color={Colors.textSecondary} />
+              <Text style={styles.taskTime}>
+                {task.timestamp.toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Text>
+            </View>
+          )}
+          
+          {task.value && (
+            <Text style={styles.taskValue}>{task.value}</Text>
+          )}
+        </View>
+
+        {editMode && (
+          <TouchableOpacity
+            style={styles.removeTaskButton}
+            onPress={() => onTaskDelete(checklistId, sectionId, task.id)}
+          >
+            <Trash2 size={14} color={Colors.error} />
+          </TouchableOpacity>
+        )}
+      </View>
+      
+      {task.type === 'text' && (
+        <View style={styles.textInputContainer}>
+          <TextInput
+            style={[
+              styles.taskTextInput,
+              task.completed && styles.disabledTextInput
+            ]}
+            value={task.textValue || ''}
+            onChangeText={handleTextChange}
+            placeholder="Add notes or measurements..."
+            placeholderTextColor={Colors.textTertiary}
+            multiline
+            numberOfLines={2}
+            editable={!task.completed}
+          />
+        </View>
+      )}
+
+      {task.type === 'temperature' && !isSensorBased && !task.completed && (
+        <View style={styles.manualTempContainer}>
+          <Text style={styles.manualTempLabel}>Manual Temperature: {manualTemp.toFixed(1)}°C</Text>
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>-20°C</Text>
+            <Slider
+              style={styles.slider}
+              minimumValue={-20}
+              maximumValue={60}
+              value={manualTemp}
+              onValueChange={setManualTemp}
+              onSlidingComplete={handleManualTempChange}
+              minimumTrackTintColor="#7C3AED"
+              maximumTrackTintColor="#E2E8F0"
+              thumbTintColor="#7C3AED"
+            />
+            <Text style={styles.sliderLabel}>60°C</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Mobile Task Item for DraggableFlatList
+function MobileTaskItem({ 
+  item: task, 
+  drag, 
+  isActive, 
+  checklistId, 
+  sectionId, 
+  editMode, 
+  onTaskToggle, 
+  onTaskUpdate, 
+  onTaskDelete, 
+  onRecordTemperature,
+  isSensorBased 
+}: RenderItemParams<ChecklistTask> & {
+  checklistId: string;
+  sectionId: string;
+  editMode: boolean;
+  onTaskToggle: (checklistId: string, sectionId: string, taskId: string) => void;
+  onTaskUpdate: (checklistId: string, sectionId: string, taskId: string, updates: Partial<ChecklistTask>) => void;
+  onTaskDelete: (checklistId: string, sectionId: string, taskId: string) => void;
+  onRecordTemperature: (checklistId: string, sectionId: string, taskId: string) => void;
+  isSensorBased: boolean;
+}) {
+  const [manualTemp, setManualTemp] = useState(0);
+
+  const handleTaskToggle = () => {
+    if (task.type === 'text' && !task.completed && (!task.textValue || task.textValue.trim() === '')) {
+      Alert.alert('Text Required', 'Please fill in the text before marking this task as complete.');
+      return;
+    }
+    
+    if (task.type === 'temperature') {
+      onRecordTemperature(checklistId, sectionId, task.id);
+    } else {
+      onTaskToggle(checklistId, sectionId, task.id);
+    }
+  };
+
+  const handleTextChange = (text: string) => {
+    onTaskUpdate(checklistId, sectionId, task.id, { textValue: text });
+  };
+
+  const handleTitleChange = (title: string) => {
+    onTaskUpdate(checklistId, sectionId, task.id, { title });
+  };
+
+  const handleManualTempChange = (temp: number) => {
+    setManualTemp(temp);
+    const tempValue = `Manual reading: ${temp.toFixed(1)}°C`;
+    onTaskUpdate(checklistId, sectionId, task.id, { 
+      value: tempValue,
+      completed: true,
+      timestamp: new Date()
+    });
+  };
+
+  return (
+    <ScaleDecorator>
+      <View style={[styles.taskItemContainer, isActive && styles.draggingTask]}>
+        <View style={styles.taskRow}>
+          {editMode && (
+            <TouchableOpacity 
+              style={styles.dragHandle} 
+              onLongPress={drag}
+              delayLongPress={100}
+            >
+              <DragHandle />
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity
+            style={styles.taskToggle}
+            onPress={handleTaskToggle}
+          >
+            {task.type === 'temperature' ? (
+              <View style={styles.temperatureButton}>
+                <Thermometer size={16} color="#7C3AED" />
+              </View>
+            ) : task.completed ? (
+              <CheckCircle size={18} color={Colors.success} />
+            ) : (
+              <Circle size={18} color={Colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+          
+          <View style={styles.taskContent}>
+            {editMode ? (
+              <TextInput
+                style={styles.editTaskInput}
+                value={task.title}
+                onChangeText={handleTitleChange}
+                placeholder="Task description..."
+                placeholderTextColor={Colors.textTertiary}
+              />
+            ) : (
+              <Text style={[
+                styles.taskTitle,
+                task.completed && styles.completedTask
+              ]}>
+                {task.title}
+              </Text>
+            )}
+            
+            {task.timestamp && (
+              <View style={styles.taskMeta}>
+                <Clock size={10} color={Colors.textSecondary} />
+                <Text style={styles.taskTime}>
+                  {task.timestamp.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </Text>
+              </View>
+            )}
+            
+            {task.value && (
+              <Text style={styles.taskValue}>{task.value}</Text>
+            )}
+          </View>
+
+          {editMode && (
+            <TouchableOpacity
+              style={styles.removeTaskButton}
+              onPress={() => onTaskDelete(checklistId, sectionId, task.id)}
+            >
+              <Trash2 size={14} color={Colors.error} />
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {task.type === 'text' && (
+          <View style={styles.textInputContainer}>
+            <TextInput
+              style={[
+                styles.taskTextInput,
+                task.completed && styles.disabledTextInput
+              ]}
+              value={task.textValue || ''}
+              onChangeText={handleTextChange}
+              placeholder="Add notes or measurements..."
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              numberOfLines={2}
+              editable={!task.completed}
+            />
+          </View>
+        )}
+
+        {task.type === 'temperature' && !isSensorBased && !task.completed && (
+          <View style={styles.manualTempContainer}>
+            <Text style={styles.manualTempLabel}>Manual Temperature: {manualTemp.toFixed(1)}°C</Text>
+            <View style={styles.sliderContainer}>
+              <Text style={styles.sliderLabel}>-20°C</Text>
+              <Slider
+                style={styles.slider}
+                minimumValue={-20}
+                maximumValue={60}
+                value={manualTemp}
+                onValueChange={setManualTemp}
+                onSlidingComplete={handleManualTempChange}
+                minimumTrackTintColor="#7C3AED"
+                maximumTrackTintColor="#E2E8F0"
+                thumbTintColor="#7C3AED"
+              />
+              <Text style={styles.sliderLabel}>60°C</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </ScaleDecorator>
+  );
+}
 
 export default function Checklists() {
   const { t } = useTranslation();
@@ -157,42 +530,184 @@ export default function Checklists() {
   const [expandedChecklist, setExpandedChecklist] = useState<string | null>(null);
   const [showSectionOptionsModal, setShowSectionOptionsModal] = useState(false);
   const [showTaskTypeModal, setShowTaskTypeModal] = useState(false);
-  const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [comment, setComment] = useState('');
-  const [checklists, setChecklists] = useState(mockChecklists);
-  const [editMode, setEditMode] = useState(false);
-  const [editingSectionTitle, setEditingSectionTitle] = useState<string | null>(null);
-  const [editingSectionDescription, setEditingSectionDescription] = useState<string | null>(null);
-  const [sectionTitleValue, setSectionTitleValue] = useState('');
-  const [sectionDescriptionValue, setSectionDescriptionValue] = useState('');
-  const [editingSection, setEditingSection] = useState<string | null>(null);
-  const [sectionComment, setSectionComment] = useState('');
-  const [showSectionCommentModal, setShowSectionCommentModal] = useState(false);
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [comment, setComment] = useState('');
+  const [submitterName, setSubmitterName] = useState('');
+  const [submittingChecklistId, setSubmittingChecklistId] = useState<string | null>(null);
+  const [checklists, setChecklists] = useState(mockChecklists);
+  const [editMode, setEditMode] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{ checklistId: string; sectionId: string } | null>(null);
-  const [addingTaskToSection, setAddingTaskToSection] = useState<{ checklistId: string; sectionId: string; insertIndex?: number } | null>(null);
-  const [submittingChecklist, setSubmittingChecklist] = useState<string | null>(null);
-  const [submittedBy, setSubmittedBy] = useState('');
-  const [draggedTask, setDraggedTask] = useState<{ sectionId: string; taskIndex: number } | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [addingTaskToSection, setAddingTaskToSection] = useState<{ checklistId: string; sectionId: string } | null>(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const filteredChecklists = checklists.filter(c => c.type === activeTab);
   const canEdit = user?.role === 'admin';
   const isSensorBased = user?.subscriptionType === 'sensor-based';
 
-  const markAsChanged = () => {
-    setHasUnsavedChanges(true);
+  const isChecklistComplete = (checklist: ExtendedChecklist) => {
+    return checklist.sections.every(section => 
+      section.tasks.every(task => task.completed)
+    );
   };
 
-  const toggleSection = (checklistId: string, sectionId: string) => {
+  const toggleTask = (checklistId: string, sectionId: string, taskId: string) => {
     setChecklists(prev => prev.map(checklist => 
       checklist.id === checklistId 
         ? {
             ...checklist,
+            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
             sections: checklist.sections.map(section => 
-              section.id === sectionId 
+              section.id === sectionId
+                ? {
+                    ...section,
+                    tasks: section.tasks.map(task => 
+                      task.id === taskId 
+                        ? { 
+                            ...task, 
+                            completed: !task.completed, 
+                            timestamp: !task.completed ? new Date() : undefined 
+                          }
+                        : task
+                    )
+                  }
+                : section
+            )
+          }
+        : checklist
+    ));
+  };
+
+  const updateTask = (checklistId: string, sectionId: string, taskId: string, updates: Partial<ChecklistTask>) => {
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId 
+        ? {
+            ...checklist,
+            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? {
+                    ...section,
+                    tasks: section.tasks.map(task => 
+                      task.id === taskId ? { ...task, ...updates } : task
+                    )
+                  }
+                : section
+            )
+          }
+        : checklist
+    ));
+  };
+
+  const recordTemperature = (checklistId: string, sectionId: string, taskId: string) => {
+    if (isSensorBased) {
+      // Automatically record all sensors
+      const temperatureReadings = mockSensors.map(sensor => 
+        `${sensor.name}: ${sensor.currentTemp}°C`
+      ).join('\n');
+
+      setChecklists(prev => prev.map(checklist => 
+        checklist.id === checklistId 
+          ? {
+              ...checklist,
+              status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
+              sections: checklist.sections.map(section => 
+                section.id === sectionId
+                  ? {
+                      ...section,
+                      tasks: section.tasks.map(task => 
+                        task.id === taskId 
+                          ? { 
+                              ...task, 
+                              completed: true, 
+                              timestamp: new Date(), 
+                              value: temperatureReadings 
+                            }
+                          : task
+                      )
+                    }
+                  : section
+              )
+            }
+          : checklist
+      ));
+
+      Alert.alert('Temperature Recorded', 'All sensor temperatures have been automatically recorded.');
+    }
+    // For non-sensor users, the manual temperature input will handle this
+  };
+
+  const deleteTask = (checklistId: string, sectionId: string, taskId: string) => {
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, tasks: section.tasks.filter(task => task.id !== taskId) }
+                : section
+            )
+          }
+        : checklist
+    ));
+  };
+
+  const addTask = (checklistId: string, sectionId: string, type: 'checkbox' | 'text' | 'temperature') => {
+    const newTask: ChecklistTask = {
+      id: Date.now().toString(),
+      type,
+      title: type === 'text' ? 'Enter task description' : 
+             type === 'temperature' ? 'Record temperature' :
+             'Check when completed',
+      completed: false,
+      textValue: type === 'text' ? '' : undefined,
+    };
+
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, tasks: [...section.tasks, newTask] }
+                : section
+            )
+          }
+        : checklist
+    ));
+  };
+
+  const addSection = (checklistId: string) => {
+    const newSection: ChecklistSection = {
+      id: Date.now().toString(),
+      title: 'New Section',
+      tasks: [],
+      collapsed: false,
+    };
+
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? { ...checklist, sections: [...checklist.sections, newSection] }
+        : checklist
+    ));
+  };
+
+  const toggleSectionCollapse = (checklistId: string, sectionId: string) => {
+    setChecklists(prev => prev.map(checklist => 
+      checklist.id === checklistId
+        ? {
+            ...checklist,
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
                 ? { ...section, collapsed: !section.collapsed }
                 : section
             )
@@ -201,86 +716,87 @@ export default function Checklists() {
     ));
   };
 
-  const toggleItem = (checklistId: string, itemId: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId 
-        ? {
-            ...checklist,
-            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
-            completedBy: checklist.status === 'completed' ? undefined : checklist.completedBy,
-            sections: checklist.sections.map(section => ({
-              ...section,
-              tasks: section.tasks.map(item => {
-                if (item.id === itemId) {
-                  // For text tasks, only allow completion if there's text input
-                  if (item.type === 'text' && !item.completed && (!item.textInput || item.textInput.trim() === '')) {
-                    return item; // Don't toggle if no text input
-                  }
-                  return { 
-                    ...item, 
-                    completed: !item.completed, 
-                    timestamp: item.completed ? undefined : new Date() 
-                  };
-                }
-                return item;
-              })
-            }))
-          }
-        : checklist
-    ));
-    markAsChanged();
+  const handleDragEnd = (event: DragEndEvent, checklistId: string, sectionId: string) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setChecklists(prev => prev.map(checklist => 
+        checklist.id === checklistId
+          ? {
+              ...checklist,
+              sections: checklist.sections.map(section => 
+                section.id === sectionId
+                  ? {
+                      ...section,
+                      tasks: arrayMove(
+                        section.tasks,
+                        section.tasks.findIndex(task => task.id === active.id),
+                        section.tasks.findIndex(task => task.id === over.id)
+                      )
+                    }
+                  : section
+              )
+            }
+          : checklist
+      ));
+    }
   };
 
-  const updateTextInput = (checklistId: string, itemId: string, text: string) => {
+  const handleMobileDragEnd = (data: ChecklistTask[], checklistId: string, sectionId: string) => {
     setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId 
+      checklist.id === checklistId
         ? {
             ...checklist,
-            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
-            completedBy: checklist.status === 'completed' ? undefined : checklist.completedBy,
-            sections: checklist.sections.map(section => ({
-              ...section,
-              tasks: section.tasks.map(item => 
-                item.id === itemId 
-                  ? { ...item, textInput: text }
-                  : item
-              )
-            }))
+            sections: checklist.sections.map(section => 
+              section.id === sectionId
+                ? { ...section, tasks: data }
+                : section
+            )
           }
         : checklist
     ));
-    markAsChanged();
   };
 
-  const recordTemperature = (checklistId: string, itemId: string) => {
-    const temperatureReadings = mockSensors.map(sensor => 
-      `${sensor.name}: ${sensor.temperature}°C`
-    ).join(', ');
+  const handleSubmitChecklist = (checklistId: string) => {
+    const checklist = checklists.find(c => c.id === checklistId);
+    if (!checklist) return;
 
-    Alert.alert(
-      'Temperature Recorded',
-      `Temperatures automatically recorded:\n${temperatureReadings}`,
-      [{ text: 'OK' }]
-    );
-    
+    if (!isChecklistComplete(checklist)) {
+      Alert.alert(
+        'Incomplete Checklist',
+        'Please complete all tasks before submitting the checklist.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setSubmittingChecklistId(checklistId);
+    setSubmitterName('');
+    setShowSubmissionModal(true);
+  };
+
+  const confirmSubmission = () => {
+    if (!submitterName.trim()) {
+      Alert.alert('Error', 'Please enter your name');
+      return;
+    }
+
+    if (!submittingChecklistId) return;
+
     setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId 
-        ? {
-            ...checklist,
-            status: checklist.status === 'completed' ? 'in-progress' : checklist.status,
-            completedBy: checklist.status === 'completed' ? undefined : checklist.completedBy,
-            sections: checklist.sections.map(section => ({
-              ...section,
-              tasks: section.tasks.map(item => 
-                item.id === itemId 
-                  ? { ...item, completed: true, timestamp: new Date(), value: temperatureReadings }
-                  : item
-              )
-            }))
+      checklist.id === submittingChecklistId 
+        ? { 
+            ...checklist, 
+            status: 'completed', 
+            completedBy: submitterName.trim() 
           }
         : checklist
     ));
-    markAsChanged();
+
+    setShowSubmissionModal(false);
+    setSubmittingChecklistId(null);
+    setSubmitterName('');
+    Alert.alert('Success', 'Checklist submitted successfully!');
   };
 
   const handleSectionOptions = (checklistId: string, sectionId: string) => {
@@ -290,43 +806,13 @@ export default function Checklists() {
 
   const handleAddComment = () => {
     setShowSectionOptionsModal(false);
+    setComment('');
     setShowCommentModal(true);
   };
 
   const handleAddImage = () => {
     setShowSectionOptionsModal(false);
     setShowImageModal(true);
-  };
-
-  const handleRecordTemperatures = () => {
-    if (!selectedSection) return;
-
-    const { checklistId, sectionId } = selectedSection;
-    const temperatureTask = {
-      id: Date.now().toString(),
-      type: 'temperature' as const,
-      title: 'Automatic Temperature Recording',
-      completed: true,
-      timestamp: new Date(),
-      value: mockSensors.map(s => `${s.name}: ${s.temperature}°C`).join(', ')
-    };
-
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? { ...section, tasks: [...section.tasks, temperatureTask] }
-                : section
-            )
-          }
-        : checklist
-    ));
-
-    setShowSectionOptionsModal(false);
-    Alert.alert('Success', 'Temperature readings have been automatically recorded');
-    markAsChanged();
   };
 
   const saveComment = () => {
@@ -349,329 +835,50 @@ export default function Checklists() {
     setShowCommentModal(false);
     setComment('');
     setSelectedSection(null);
-    markAsChanged();
   };
 
-  const saveImage = () => {
+  const saveImage = async () => {
     if (!selectedSection) return;
 
-    const { checklistId, sectionId } = selectedSection;
-    const mockImageUri = 'https://images.pexels.com/photos/4099354/pexels-photo-4099354.jpeg?auto=compress&cs=tinysrgb&w=400';
-    
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? { ...section, imageUri: mockImageUri }
-                : section
-            )
-          }
-        : checklist
-    ));
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+      });
 
-    setShowImageModal(false);
-    setSelectedSection(null);
-    Alert.alert('Success', 'Image has been added to the section');
-    markAsChanged();
-  };
+      if (!result.canceled && result.assets[0]) {
+        const { checklistId, sectionId } = selectedSection;
+        const imageUri = result.assets[0].uri;
+        
+        setChecklists(prev => prev.map(checklist => 
+          checklist.id === checklistId
+            ? {
+                ...checklist,
+                sections: checklist.sections.map(section => 
+                  section.id === sectionId
+                    ? { ...section, imageUri }
+                    : section
+                )
+              }
+            : checklist
+        ));
 
-  const startEditingSectionTitle = (sectionId: string, currentTitle: string) => {
-    setEditingSectionTitle(sectionId);
-    setSectionTitleValue(currentTitle);
-  };
-
-  const startEditingSectionDescription = (sectionId: string, currentDescription: string) => {
-    setEditingSectionDescription(sectionId);
-    setSectionDescriptionValue(currentDescription || '');
-  };
-
-  const saveSectionTitle = (checklistId: string, sectionId: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? { ...section, title: sectionTitleValue }
-                : section
-            )
-          }
-        : checklist
-    ));
-    setEditingSectionTitle(null);
-    setSectionTitleValue('');
-    markAsChanged();
-  };
-
-  const saveSectionDescription = (checklistId: string, sectionId: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? { ...section, description: sectionDescriptionValue }
-                : section
-            )
-          }
-        : checklist
-    ));
-    setEditingSectionDescription(null);
-    setSectionDescriptionValue('');
-    markAsChanged();
-  };
-
-  const addSection = (checklistId: string) => {
-    const newSection: ChecklistSection = {
-      id: Date.now().toString(),
-      title: 'New Section',
-      tasks: [],
-      collapsed: false,
-    };
-
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? { ...checklist, sections: [...checklist.sections, newSection] }
-        : checklist
-    ));
-    markAsChanged();
-  };
-
-  const removeSection = (checklistId: string, sectionId: string) => {
-    Alert.alert(
-      'Delete Section',
-      'Are you sure you want to delete this section and all its tasks?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setChecklists(prev => prev.map(checklist => 
-              checklist.id === checklistId
-                ? { ...checklist, sections: checklist.sections.filter(s => s.id !== sectionId) }
-                : checklist
-            ));
-            markAsChanged();
-          },
-        },
-      ]
-    );
-  };
-
-  const handleAddTaskClick = (checklistId: string, sectionId: string, insertIndex?: number) => {
-    setAddingTaskToSection({ checklistId, sectionId, insertIndex });
-    setShowTaskTypeModal(true);
-  };
-
-  const addTaskOfType = (type: 'checkbox' | 'text' | 'temperature') => {
-    if (!addingTaskToSection) return;
-
-    const { checklistId, sectionId, insertIndex } = addingTaskToSection;
-    
-    const newTask: ChecklistTask = {
-      id: Date.now().toString(),
-      type,
-      title: type === 'text' ? 'Enter task description' : 
-             type === 'temperature' ? 'Record temperature' :
-             'Check when completed',
-      completed: false,
-      textInput: type === 'text' ? '' : undefined,
-    };
-
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? {
-                    ...section,
-                    tasks: insertIndex !== undefined 
-                      ? [
-                          ...section.tasks.slice(0, insertIndex),
-                          newTask,
-                          ...section.tasks.slice(insertIndex)
-                        ]
-                      : [...section.tasks, newTask]
-                  }
-                : section
-            )
-          }
-        : checklist
-    ));
-
-    setShowTaskTypeModal(false);
-    setAddingTaskToSection(null);
-    markAsChanged();
-  };
-
-  const removeTask = (checklistId: string, sectionId: string, taskId: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? { ...section, tasks: section.tasks.filter(task => task.id !== taskId) }
-                : section
-            )
-          }
-        : checklist
-    ));
-    markAsChanged();
-  };
-
-  const updateTaskTitle = (checklistId: string, sectionId: string, taskId: string, newTitle: string) => {
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === checklistId
-        ? {
-            ...checklist,
-            sections: checklist.sections.map(section => 
-              section.id === sectionId
-                ? {
-                    ...section,
-                    tasks: section.tasks.map(task => 
-                      task.id === taskId
-                        ? { ...task, title: newTitle }
-                        : task
-                    )
-                  }
-                : section
-            )
-          }
-        : checklist
-    ));
-    markAsChanged();
-  };
-
-  // Drag and Drop handlers
-  const handleDragStart = (e: any, sectionId: string, taskIndex: number) => {
-    setDraggedTask({ sectionId, taskIndex });
-    if (Platform.OS === 'web') {
-      e.dataTransfer.effectAllowed = 'move';
+        setShowImageModal(false);
+        setSelectedSection(null);
+        Alert.alert('Success', 'Image has been added to the section');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to select image');
     }
-  };
-
-  const handleDragOver = (e: any) => {
-    e.preventDefault();
-    if (Platform.OS === 'web') {
-      e.dataTransfer.dropEffect = 'move';
-    }
-  };
-
-  const handleDrop = (e: any, targetSectionId: string, targetIndex: number, checklistId: string) => {
-    e.preventDefault();
-    
-    if (!draggedTask) return;
-
-    const { sectionId: sourceSectionId, taskIndex: sourceIndex } = draggedTask;
-
-    if (sourceSectionId === targetSectionId && sourceIndex === targetIndex) {
-      setDraggedTask(null);
-      return;
-    }
-
-    setChecklists(prev => prev.map(checklist => {
-      if (checklist.id !== checklistId) return checklist;
-
-      const newSections = [...checklist.sections];
-      const sourceSection = newSections.find(s => s.id === sourceSectionId);
-      const targetSection = newSections.find(s => s.id === targetSectionId);
-
-      if (!sourceSection || !targetSection) return checklist;
-
-      // Remove task from source
-      const [movedTask] = sourceSection.tasks.splice(sourceIndex, 1);
-
-      // Add task to target
-      const insertIndex = targetIndex;
-      targetSection.tasks.splice(insertIndex, 0, movedTask);
-
-      return { ...checklist, sections: newSections };
-    }));
-
-    setDraggedTask(null);
-    markAsChanged();
-  };
-
-  const moveTask = (checklistId: string, sectionId: string, taskIndex: number, direction: 'up' | 'down') => {
-    setChecklists(prev => prev.map(checklist => {
-      if (checklist.id !== checklistId) return checklist;
-
-      return {
-        ...checklist,
-        sections: checklist.sections.map(section => {
-          if (section.id !== sectionId) return section;
-
-          const newTasks = [...section.tasks];
-          const newIndex = direction === 'up' ? taskIndex - 1 : taskIndex + 1;
-
-          if (newIndex < 0 || newIndex >= newTasks.length) return section;
-
-          [newTasks[taskIndex], newTasks[newIndex]] = [newTasks[newIndex], newTasks[taskIndex]];
-
-          return { ...section, tasks: newTasks };
-        })
-      };
-    }));
-    markAsChanged();
   };
 
   const saveChanges = () => {
     setEditMode(false);
-    setHasUnsavedChanges(false);
     Alert.alert('Success', 'Changes saved successfully!');
   };
 
   const cancelEdit = () => {
-    if (hasUnsavedChanges) {
-      Alert.alert(
-        'Unsaved Changes',
-        'You have unsaved changes. Are you sure you want to cancel?',
-        [
-          { text: 'Keep Editing', style: 'cancel' },
-          {
-            text: 'Discard Changes',
-            style: 'destructive',
-            onPress: () => {
-              setEditMode(false);
-              setHasUnsavedChanges(false);
-              // Reset to original state if needed
-            },
-          },
-        ]
-      );
-    } else {
-      setEditMode(false);
-    }
-  };
-
-  const handleSubmitChecklist = (checklistId: string) => {
-    
-    setSubmittingChecklist(checklistId);
-    setSubmittedBy(user?.name || '');
-    setShowSubmitModal(true);
-  };
-
-  const confirmSubmitChecklist = () => {
-    if (!submittingChecklist || !submittedBy.trim()) {
-      Alert.alert('Error', 'Please enter who is submitting this checklist');
-      return;
-    }
-
-    setChecklists(prev => prev.map(checklist => 
-      checklist.id === submittingChecklist 
-        ? { ...checklist, status: 'completed', completedBy: submittedBy.trim() }
-        : checklist
-    ));
-
-    setShowSubmitModal(false);
-    setSubmittingChecklist(null);
-    setSubmittedBy('');
-    Alert.alert('Success', 'Checklist submitted successfully!');
+    setEditMode(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -683,110 +890,64 @@ export default function Checklists() {
     }
   };
 
-  const renderTaskItem = (item: any, checklistId: string, sectionId: string, taskIndex: number) => {
-    const taskType = item.type || 'checkbox';
-    
-    return (
-      <DragDropTask
-        key={item.id}
-        draggable={editMode}
-        index={taskIndex}
-        onDragStart={(e: any) => handleDragStart(e, sectionId, taskIndex)}
-        onDragOver={handleDragOver}
-        onDrop={(e: any) => handleDrop(e, sectionId, taskIndex, checklistId)}
-      >
-        <View style={styles.checklistItemContainer}>
-          <View style={styles.taskRow}>
-            {editMode && (
-              <TouchableOpacity style={styles.dragHandle}>
-                <GripVertical size={16} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={styles.checklistItem}
-              onPress={() => {
-                if (taskType === 'temperature') {
-                  recordTemperature(checklistId, item.id);
-                } else {
-                  toggleItem(checklistId, item.id);
-                }
-              }}
-            >
-              {taskType === 'temperature' ? (
-                <View style={styles.temperatureButton}>
-                  <Thermometer size={20} color="#7C3AED" />
-                </View>
-              ) : item.completed ? (
-                <CheckCircle size={20} color={Colors.success} />
-              ) : (
-                <Circle size={20} color={Colors.textSecondary} />
-              )}
-              
-              {editMode ? (
-                <TextInput
-                  style={styles.editTaskInput}
-                  value={item.title}
-                  onChangeText={(text) => updateTaskTitle(checklistId, sectionId, item.id, text)}
-                  multiline
+  const renderTaskList = (section: ChecklistSection, checklistId: string) => {
+    if (Platform.OS === 'web') {
+      // Web implementation with @dnd-kit
+      return (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(event) => handleDragEnd(event, checklistId, section.id)}
+        >
+          <SortableContext
+            items={section.tasks.map(task => task.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <View style={styles.tasksList}>
+              {section.tasks.map(task => (
+                <SortableTaskItem
+                  key={task.id}
+                  task={task}
+                  checklistId={checklistId}
+                  sectionId={section.id}
+                  editMode={editMode}
+                  onTaskToggle={toggleTask}
+                  onTaskUpdate={updateTask}
+                  onTaskDelete={deleteTask}
+                  onRecordTemperature={recordTemperature}
+                  isSensorBased={isSensorBased}
                 />
-              ) : (
-                <Text style={[
-                  styles.itemText,
-                  item.completed && styles.completedText
-                ]}>
-                  {item.title}
-                </Text>
-              )}
-              
-              {item.timestamp && (
-                <View style={styles.itemMeta}>
-                  <Clock size={12} color={Colors.textSecondary} />
-                  <Text style={styles.itemTime}>
-                    {item.timestamp.toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {editMode && (
-              <TouchableOpacity
-                style={styles.removeTaskButton}
-                onPress={() => removeTask(checklistId, sectionId, item.id)}
-              >
-                <Trash2 size={16} color={Colors.error} />
-              </TouchableOpacity>
-            )}
-          </View>
-          
-          {taskType === 'text' && (
-            <TextInput
-              style={[
-                styles.itemInput,
-                item.completed && styles.disabledInput
-              ]}
-              value={item.textInput || ''}
-              onChangeText={(text) => updateTextInput(checklistId, item.id, text)}
-              placeholder="Add notes or measurements..."
-              multiline
-              numberOfLines={2}
-              editable={!item.completed}
-              placeholderTextColor={Colors.textTertiary}
-            />
-          )}
-
-          {taskType === 'temperature' && item.completed && item.value && (
-            <View style={styles.temperatureReadings}>
-              <Text style={styles.temperatureReadingsTitle}>Recorded Temperatures:</Text>
-              <Text style={styles.temperatureReadingsText}>{item.value}</Text>
+              ))}
             </View>
-          )}
+          </SortableContext>
+        </DndContext>
+      );
+    } else {
+      // Mobile implementation with react-native-draggable-flatlist
+      return (
+        <View style={styles.tasksList}>
+          <DraggableFlatList
+            data={section.tasks}
+            onDragEnd={({ data }) => handleMobileDragEnd(data, checklistId, section.id)}
+            keyExtractor={(item) => item.id}
+            renderItem={(params) => (
+              <MobileTaskItem
+                {...params}
+                checklistId={checklistId}
+                sectionId={section.id}
+                editMode={editMode}
+                onTaskToggle={toggleTask}
+                onTaskUpdate={updateTask}
+                onTaskDelete={deleteTask}
+                onRecordTemperature={recordTemperature}
+                isSensorBased={isSensorBased}
+              />
+            )}
+            scrollEnabled={false}
+          />
         </View>
-      </DragDropTask>
-    );
+      );
+    }
   };
 
   return (
@@ -803,7 +964,6 @@ export default function Checklists() {
                 style={[styles.editToggle, editMode && styles.editToggleActive]}
                 onPress={() => setEditMode(!editMode)}
               >
-                <Edit3 size={16} color={editMode ? Colors.textInverse : Colors.info} />
                 <Text style={[
                   styles.editToggleText,
                   editMode && styles.editToggleTextActive
@@ -856,7 +1016,11 @@ export default function Checklists() {
         </ScrollView>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+      >
         <View style={styles.section}>
           {filteredChecklists.length === 0 ? (
             <View style={styles.emptyState}>
@@ -864,15 +1028,6 @@ export default function Checklists() {
               <Text style={styles.emptyText}>
                 This checklist type hasn't been set up yet.
               </Text>
-              {canEdit && (
-                <TouchableOpacity 
-                  style={styles.createChecklistButton}
-                  onPress={() => setEditMode(true)}
-                >
-                  <Plus size={20} color={Colors.textInverse} />
-                  <Text style={styles.createChecklistButtonText}>Create Checklist</Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : (
             filteredChecklists.map(checklist => (
@@ -906,77 +1061,29 @@ export default function Checklists() {
                   <View style={styles.checklistContent}>
                     {checklist.sections.map(section => (
                       <View key={section.id} style={styles.sectionContainer}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.sectionHeader}
-                          onPress={() => toggleSection(checklist.id, section.id)}
+                          onPress={() => toggleSectionCollapse(checklist.id, section.id)}
                         >
                           <View style={styles.sectionTitleContainer}>
-                            {editMode && editingSectionTitle === section.id ? (
-                              <TextInput
-                                style={styles.sectionTitleInput}
-                                value={sectionTitleValue}
-                                onChangeText={setSectionTitleValue}
-                                onBlur={() => saveSectionTitle(checklist.id, section.id)}
-                                autoFocus
-                              />
-                            ) : (
-                              <TouchableOpacity
-                                onPress={() => editMode && startEditingSectionTitle(section.id, section.title)}
-                                disabled={!editMode}
-                              >
-                                <Text style={styles.sectionTitle}>{section.title}</Text>
-                              </TouchableOpacity>
-                            )}
-                            
+                            <Text style={styles.sectionTitle}>{section.title}</Text>
                             {section.description && (
-                              <>
-                                {editMode && editingSectionDescription === section.id ? (
-                                  <TextInput
-                                    style={styles.sectionDescriptionInput}
-                                    value={sectionDescriptionValue}
-                                    onChangeText={setSectionDescriptionValue}
-                                    onBlur={() => saveSectionDescription(checklist.id, section.id)}
-                                    placeholder="Add section description..."
-                                    multiline
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <TouchableOpacity
-                                    onPress={() => editMode && startEditingSectionDescription(section.id, section.description || '')}
-                                    disabled={!editMode}
-                                  >
-                                    <Text style={styles.sectionDescription}>{section.description}</Text>
-                                  </TouchableOpacity>
-                                )}
-                              </>
-                            )}
-                            
-                            {editMode && !section.description && (
-                              <TouchableOpacity
-                                onPress={() => startEditingSectionDescription(section.id, '')}
-                                style={styles.addDescriptionButton}
-                              >
-                                <Plus size={16} color={Colors.info} />
-                                <Text style={styles.addDescriptionText}>Add description</Text>
-                              </TouchableOpacity>
+                              <Text style={styles.sectionDescription}>{section.description}</Text>
                             )}
                           </View>
                           
-                          <View style={styles.sectionActions}>
-                            {editMode && (
-                              <TouchableOpacity
-                                style={styles.removeSectionButton}
-                                onPress={() => removeSection(checklist.id, section.id)}
-                              >
-                                <Trash2 size={16} color={Colors.error} />
-                              </TouchableOpacity>
-                            )}
+                          <View style={styles.sectionHeaderActions}>
                             <TouchableOpacity
                               style={styles.sectionOptionsButton}
                               onPress={() => handleSectionOptions(checklist.id, section.id)}
                             >
                               <MoreVertical size={20} color={Colors.textSecondary} />
                             </TouchableOpacity>
+                            {section.collapsed ? (
+                              <ChevronDown size={20} color={Colors.textSecondary} />
+                            ) : (
+                              <ChevronUp size={20} color={Colors.textSecondary} />
+                            )}
                           </View>
                         </TouchableOpacity>
 
@@ -989,19 +1096,28 @@ export default function Checklists() {
                               </View>
                             )}
 
-                            <View style={styles.sectionTasks}>
-                              {section.tasks.map((item, index) => renderTaskItem(item, checklist.id, section.id, index))}
-                              
-                              {editMode && (
+                            {section.imageUri && (
+                              <View style={styles.sectionImage}>
+                                <Image source={{ uri: section.imageUri }} style={styles.sectionImageView} />
+                              </View>
+                            )}
+
+                            {renderTaskList(section, checklist.id)}
+
+                            {editMode && (
+                              <View style={styles.addTaskSection}>
                                 <TouchableOpacity
                                   style={styles.addTaskButton}
-                                  onPress={() => handleAddTaskClick(checklist.id, section.id)}
+                                  onPress={() => {
+                                    setAddingTaskToSection({ checklistId: checklist.id, sectionId: section.id });
+                                    setShowTaskTypeModal(true);
+                                  }}
                                 >
                                   <Plus size={16} color={Colors.info} />
                                   <Text style={styles.addTaskText}>Add Task</Text>
                                 </TouchableOpacity>
-                              )}
-                            </View>
+                              </View>
+                            )}
                           </>
                         )}
                       </View>
@@ -1044,50 +1160,6 @@ export default function Checklists() {
         </View>
       </ScrollView>
 
-      {/* Submit Checklist Modal */}
-      <Modal visible={showSubmitModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Submit Checklist</Text>
-              <TouchableOpacity onPress={() => setShowSubmitModal(false)}>
-                <X size={24} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.modalBody}>
-              <Text style={styles.submitLabel}>Submitted by:</Text>
-              <TextInput
-                style={styles.submitInput}
-                value={submittedBy}
-                onChangeText={setSubmittedBy}
-                placeholder="Enter your name"
-                placeholderTextColor={Colors.textTertiary}
-                autoFocus
-              />
-              <Text style={styles.submitNote}>
-                Once submitted, this checklist will be marked as completed and cannot be modified.
-              </Text>
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelModalButton}
-                onPress={() => setShowSubmitModal(false)}
-              >
-                <Text style={styles.cancelModalButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={confirmSubmitChecklist}
-              >
-                <Text style={styles.primaryButtonText}>Submit Checklist</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       {/* Section Options Modal */}
       <Modal visible={showSectionOptionsModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -1109,13 +1181,6 @@ export default function Checklists() {
                 <Camera size={20} color={Colors.info} />
                 <Text style={styles.optionText}>Add Image</Text>
               </TouchableOpacity>
-              
-              {isSensorBased && (
-                <TouchableOpacity style={styles.optionButton} onPress={handleRecordTemperatures}>
-                  <Thermometer size={20} color={Colors.info} />
-                  <Text style={styles.optionText}>Record Temperatures</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         </View>
@@ -1138,7 +1203,13 @@ export default function Checklists() {
             <View style={styles.taskTypeOptions}>
               <TouchableOpacity
                 style={styles.taskTypeOption}
-                onPress={() => addTaskOfType('checkbox')}
+                onPress={() => {
+                  if (addingTaskToSection) {
+                    addTask(addingTaskToSection.checklistId, addingTaskToSection.sectionId, 'checkbox');
+                  }
+                  setShowTaskTypeModal(false);
+                  setAddingTaskToSection(null);
+                }}
               >
                 <CheckSquare size={24} color={Colors.info} />
                 <Text style={styles.taskTypeTitle}>Checkbox</Text>
@@ -1147,7 +1218,13 @@ export default function Checklists() {
 
               <TouchableOpacity
                 style={styles.taskTypeOption}
-                onPress={() => addTaskOfType('text')}
+                onPress={() => {
+                  if (addingTaskToSection) {
+                    addTask(addingTaskToSection.checklistId, addingTaskToSection.sectionId, 'text');
+                  }
+                  setShowTaskTypeModal(false);
+                  setAddingTaskToSection(null);
+                }}
               >
                 <Type size={24} color={Colors.success} />
                 <Text style={styles.taskTypeTitle}>Text Input</Text>
@@ -1156,7 +1233,13 @@ export default function Checklists() {
 
               <TouchableOpacity
                 style={styles.taskTypeOption}
-                onPress={() => addTaskOfType('temperature')}
+                onPress={() => {
+                  if (addingTaskToSection) {
+                    addTask(addingTaskToSection.checklistId, addingTaskToSection.sectionId, 'temperature');
+                  }
+                  setShowTaskTypeModal(false);
+                  setAddingTaskToSection(null);
+                }}
               >
                 <Thermometer size={24} color="#7C3AED" />
                 <Text style={styles.taskTypeTitle}>Temperature</Text>
@@ -1176,7 +1259,7 @@ export default function Checklists() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Comment</Text>
               <TouchableOpacity onPress={() => setShowCommentModal(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
+                <X size={24} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
             
@@ -1186,16 +1269,103 @@ export default function Checklists() {
                 value={comment}
                 onChangeText={setComment}
                 placeholder="Enter your comment..."
+                placeholderTextColor={Colors.textTertiary}
                 multiline
                 numberOfLines={4}
                 autoFocus
-                placeholderTextColor={Colors.textTertiary}
               />
             </View>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.primaryButton} onPress={saveComment}>
+              <TouchableOpacity 
+                style={styles.cancelModalButton}
+                onPress={() => setShowCommentModal(false)}
+              >
+                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.primaryButton}
+                onPress={saveComment}
+              >
                 <Text style={styles.primaryButtonText}>Save Comment</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Image Modal */}
+      <Modal visible={showImageModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Image</Text>
+              <TouchableOpacity onPress={() => setShowImageModal(false)}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={styles.imageHelperText}>
+                Select an image to attach to this section.
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.cancelModalButton}
+                onPress={() => setShowImageModal(false)}
+              >
+                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.primaryButton}
+                onPress={saveImage}
+              >
+                <Text style={styles.primaryButtonText}>Select Image</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Submission Modal */}
+      <Modal visible={showSubmissionModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Submit Checklist</Text>
+              <TouchableOpacity onPress={() => setShowSubmissionModal(false)}>
+                <X size={24} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <Text style={styles.submissionText}>
+                Please enter your name to confirm submission of this checklist.
+              </Text>
+              <TextInput
+                style={styles.submitterInput}
+                value={submitterName}
+                onChangeText={setSubmitterName}
+                placeholder="Enter your full name"
+                placeholderTextColor={Colors.textTertiary}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.cancelModalButton}
+                onPress={() => setShowSubmissionModal(false)}
+              >
+                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.primaryButton}
+                onPress={confirmSubmission}
+              >
+                <Text style={styles.primaryButtonText}>Submit Checklist</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1332,21 +1502,6 @@ const styles = StyleSheet.create({
     color: Colors.textTertiary,
     textAlign: 'center',
     paddingHorizontal: 40,
-    marginBottom: 24,
-  },
-  createChecklistButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.info,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  createChecklistButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textInverse,
   },
   checklistCard: {
     backgroundColor: Colors.backgroundPrimary,
@@ -1401,21 +1556,16 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   sectionContainer: {
-    marginBottom: 20,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    overflow: 'hidden',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: Colors.backgroundPrimary,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
+    marginBottom: 8,
   },
   sectionTitleContainer: {
     flex: 1,
@@ -1425,52 +1575,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  sectionTitleInput: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textPrimary,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderMedium,
-    paddingVertical: 4,
   },
   sectionDescription: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
+    marginTop: 4,
   },
-  sectionDescriptionInput: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    borderWidth: 1,
-    borderColor: Colors.borderMedium,
-    borderRadius: 6,
-    padding: 8,
-    marginTop: 8,
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  addDescriptionButton: {
+  sectionHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 4,
-  },
-  addDescriptionText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: Colors.info,
-  },
-  sectionActions: {
-    flexDirection: 'row',
     gap: 8,
-  },
-  removeSectionButton: {
-    padding: 8,
-    borderRadius: 6,
-    backgroundColor: Colors.error + '20',
   },
   sectionOptionsButton: {
     padding: 8,
@@ -1479,11 +1594,11 @@ const styles = StyleSheet.create({
   },
   sectionComment: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.info + '10',
+    alignItems: 'flex-start',
+    backgroundColor: Colors.backgroundSecondary,
     padding: 12,
-    margin: 16,
     borderRadius: 8,
+    marginBottom: 12,
     borderLeftWidth: 3,
     borderLeftColor: Colors.info,
     gap: 8,
@@ -1495,53 +1610,66 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     flex: 1,
   },
-  sectionTasks: {
-    padding: 16,
+  sectionImage: {
+    marginBottom: 12,
   },
-  checklistItemContainer: {
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-    paddingBottom: 8,
+  sectionImageView: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    resizeMode: 'cover',
+  },
+  tasksList: {
+    gap: 6,
+  },
+  taskItemContainer: {
+    backgroundColor: Colors.backgroundPrimary,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    marginBottom: 6,
+  },
+  draggingTask: {
+    opacity: 0.8,
+    transform: [{ scale: 1.02 }],
   },
   taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    padding: 10,
+    gap: 10,
   },
   dragHandle: {
     padding: 4,
-    cursor: Platform.OS === 'web' ? 'grab' : 'default',
   },
-  checklistItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    paddingVertical: 4,
+  taskToggle: {
+    padding: 4,
   },
   temperatureButton: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 8,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#7C3AED',
   },
-  itemText: {
+  taskContent: {
     flex: 1,
-    fontSize: 16,
+  },
+  taskTitle: {
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: Colors.textPrimary,
+    marginBottom: 2,
   },
-  completedText: {
+  completedTask: {
+    textDecorationLine: 'line-through',
     color: Colors.textSecondary,
   },
   editTaskInput: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: Colors.textPrimary,
     borderWidth: 1,
@@ -1549,68 +1677,86 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 8,
   },
-  removeTaskButton: {
-    padding: 8,
-    backgroundColor: Colors.error + '20',
-    borderRadius: 6,
-  },
-  itemMeta: {
+  taskMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    marginTop: 2,
   },
-  itemTime: {
-    fontSize: 12,
+  taskTime: {
+    fontSize: 10,
     fontFamily: 'Inter-Regular',
     color: Colors.textSecondary,
   },
-  itemInput: {
+  taskValue: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textSecondary,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  removeTaskButton: {
+    padding: 6,
+    backgroundColor: Colors.error + '20',
+    borderRadius: 4,
+  },
+  textInputContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  taskTextInput: {
     borderWidth: 1,
     borderColor: Colors.borderLight,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 6,
+    padding: 10,
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    backgroundColor: Colors.backgroundPrimary,
-    marginTop: 8,
-    minHeight: 60,
-    textAlignVertical: 'top',
-    color: Colors.textPrimary,
-  },
-  disabledInput: {
     backgroundColor: Colors.backgroundSecondary,
+    minHeight: 50,
+    textAlignVertical: 'top',
+  },
+  disabledTextInput: {
+    backgroundColor: Colors.borderLight,
     color: Colors.textSecondary,
   },
-  temperatureReadings: {
-    backgroundColor: Colors.backgroundPrimary,
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#7C3AED',
+  manualTempContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
-  temperatureReadingsTitle: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  temperatureReadingsText: {
+  manualTempLabel: {
     fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#7C3AED',
+    marginBottom: 8,
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sliderLabel: {
+    fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: Colors.textPrimary,
+    color: Colors.textSecondary,
+  },
+  slider: {
+    flex: 1,
+    height: 40,
+  },
+  addTaskSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
   },
   addTaskButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.backgroundPrimary,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+    paddingVertical: 8,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 6,
+    gap: 6,
   },
   addTaskText: {
     fontSize: 14,
@@ -1621,16 +1767,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
     backgroundColor: Colors.backgroundSecondary,
-    paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 8,
+    marginTop: 16,
     gap: 8,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
   },
   addSectionText: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Inter-SemiBold',
     color: Colors.info,
   },
@@ -1641,7 +1785,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
+    borderTopColor: Colors.backgroundSecondary,
   },
   completedBy: {
     flexDirection: 'row',
@@ -1690,35 +1834,24 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: Colors.textPrimary,
   },
-  cancelText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textSecondary,
-  },
   modalBody: {
     padding: 24,
   },
-  submitLabel: {
+  submissionText: {
     fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: 'Inter-Regular',
     color: Colors.textPrimary,
-    marginBottom: 8,
+    marginBottom: 16,
+    lineHeight: 24,
   },
-  submitInput: {
+  submitterInput: {
     borderWidth: 1,
     borderColor: Colors.borderLight,
     borderRadius: 8,
     padding: 16,
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    marginBottom: 16,
     color: Colors.textPrimary,
-  },
-  submitNote: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: Colors.textSecondary,
-    lineHeight: 20,
   },
   commentInput: {
     borderWidth: 1,
@@ -1729,6 +1862,28 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     minHeight: 120,
     textAlignVertical: 'top',
+  },
+  imageHelperText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  optionsContainer: {
+    padding: 24,
+    gap: 16,
+  },
+  optionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 12,
+    gap: 12,
+  },
+  optionText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Medium',
     color: Colors.textPrimary,
   },
   taskTypeOptions: {
@@ -1776,34 +1931,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#237ECD',
     paddingVertical: 12,
     borderRadius: 8,
-    gap: 8,
+    backgroundColor: '#237ECD',
+    alignItems: 'center',
   },
   primaryButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: Colors.textInverse,
-  },
-  optionsContainer: {
-    padding: 24,
-    gap: 16,
-  },
-  optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 12,
-    gap: 12,
-  },
-  optionText: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: Colors.textPrimary,
   },
 });

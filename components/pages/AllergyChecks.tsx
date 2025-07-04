@@ -82,9 +82,9 @@ export default function AllergyChecks() {
     setSelectedAllergens([]);
   };
 
-  const exportResults = () => {
-    console.log('Export allergy check results');
-  };
+  // const exportResults = () => {
+  //   console.log('Export allergy check results');
+  // };
 
   const getFileIcon = (type: string) => {
     switch (type) {
@@ -330,10 +330,10 @@ export default function AllergyChecks() {
             <RotateCcw size={20} color={Colors.textSecondary} />
             <Text style={styles.secondaryButtonText}>{t('allergyChecks.reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={exportResults}>
+          {/* <TouchableOpacity style={styles.primaryButton} onPress={exportResults}>
             <Download size={20} color={Colors.textInverse} />
             <Text style={styles.primaryButtonText}>{t('allergyChecks.exportResults')}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       </View>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/pages/Dashboard';
@@ -17,6 +17,7 @@ import HACCPManager from '@/components/pages/HACCPManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator } from 'react-native';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
 
 export type PageType = 'dashboard' | 'temperature' | 'checklists' | 'incidents' | 'deliveries' | 'allergyChecks' | 'reports' | 'haccpGenerator' | 'settings' | 'allergenManagement' | 'restaurantManagement' | 'userManagement' | 'haccpManager';
 
@@ -27,10 +28,15 @@ export default function App() {
   const router = useRouter();
 
   // Handle redirect
+  useEffect(() => {
   if (!isLoading && !isAuthenticated) {
     router.replace('/login');
-    return null;
   }
+}, [isLoading, isAuthenticated]);
+
+if (isLoading || !isAuthenticated) {
+  return <ActivityIndicator size="large" style={{ flex: 1 }} />;
+}
 
   // Loading state
   if (isLoading) {
@@ -80,6 +86,7 @@ export default function App() {
   };
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={styles.container}>
       <Sidebar
         currentPage={currentPage}
@@ -91,7 +98,9 @@ export default function App() {
         {renderPage()}
       </View>
     </View>
+    </GestureHandlerRootView>
   );
+
 }
 
 const styles = StyleSheet.create({
