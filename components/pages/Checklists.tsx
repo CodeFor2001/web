@@ -146,23 +146,7 @@ const mockChecklists: ExtendedChecklist[] = [
       }
     ]
   },
-  {
-    id: '4',
-    type: 'weekly',
-    date: new Date(),
-    status: 'pending',
-    sections: [
-      {
-        id: 'section-5',
-        title: 'Weekly Audit',
-        collapsed: false,
-        tasks: [
-          { id: '10', type: 'text', title: 'Review incident reports', completed: false, textValue: '' },
-          { id: '11', type: 'checkbox', title: 'Check equipment maintenance', completed: false },
-        ]
-      }
-    ]
-  }
+  
 ];
 
 // Sortable Task Item for Web
@@ -560,6 +544,26 @@ export default function Checklists() {
     );
   };
 
+    const createNewChecklist = (type: 'opening' | 'closing' | 'probe' | 'weekly') => {
+    const newChecklist: ExtendedChecklist = {
+      id: Date.now().toString(),
+      type,
+      date: new Date(),
+      status: 'pending',
+      sections: [
+        {
+          id: 'section-' + Date.now(),
+          title: 'New Section',
+          tasks: [],
+          collapsed: false,
+        }
+      ]
+    };
+
+    setChecklists(prev => [...prev, newChecklist]);
+    setExpandedChecklist(newChecklist.id);
+    setEditMode(true);
+  };
   const toggleTask = (checklistId: string, sectionId: string, taskId: string) => {
     setChecklists(prev => prev.map(checklist => 
       checklist.id === checklistId 
@@ -1028,6 +1032,15 @@ export default function Checklists() {
               <Text style={styles.emptyText}>
                 This checklist type hasn't been set up yet.
               </Text>
+              {canEdit && (
+                <TouchableOpacity
+                  style={styles.createButton}
+                  onPress={() => createNewChecklist(activeTab)}
+                >
+                  <Plus size={20} color={Colors.textInverse} />
+                  <Text style={styles.createButtonText}>Create Checklist</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             filteredChecklists.map(checklist => (
@@ -1454,6 +1467,22 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: Colors.textInverse,
   },
+  createButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 16,
+  paddingVertical: 12,
+  paddingHorizontal: 24,
+  backgroundColor: '#237ECD',
+  borderRadius: 8,
+},
+createButtonText: {
+  marginLeft: 8,
+  fontSize: 14,
+  fontFamily: 'Inter-SemiBold',
+  color: Colors.textInverse,
+},
   tabs: {
     paddingHorizontal: 32,
     paddingVertical: 16,
