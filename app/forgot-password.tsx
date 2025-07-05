@@ -1,11 +1,67 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Mail, Shield, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowLeft, Mail, Shield, Eye, EyeOff, CircleCheck as CheckCircle, X } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 
 type Step = 'email' | 'otp' | 'reset';
+
+// Mock registered emails for validation
+const registeredEmails = [
+  'superadmin@vigilix.tech',
+  'admin@vigilix.tech',
+  'user@vigilix.tech',
+  'admin-nonsensor@vigilix.tech',
+  'user-nonsensor@vigilix.tech'
+];
+
+// Mock valid OTP for demo
+const validOTP = '123456';
+
+interface NotificationProps {
+  visible: boolean;
+  message: string;
+  type: 'error' | 'success';
+  onClose: () => void;
+}
+
+const NotificationPopup = ({ visible, message, type, onClose }: NotificationProps) => {
+  React.useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, 3000); // Auto-dismiss after 3 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, [visible, onClose]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="fade">
+      <View style={styles.notificationOverlay}>
+        <View style={[
+          styles.notificationContainer,
+          { backgroundColor: type === 'error' ? Colors.error : Colors.success }
+        ]}>
+          <View style={styles.notificationContent}>
+            {type === 'success' ? (
+              <CheckCircle size={24} color={Colors.textInverse} />
+            ) : (
+              <X size={24} color={Colors.textInverse} />
+            )}
+            <Text style={styles.notificationText}>{message}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={styles.notificationClose}>
+            <X size={20} color={Colors.textInverse} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -17,6 +73,19 @@ export default function ForgotPasswordScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [notification, setNotification] = useState({
+    visible: false,
+    message: '',
+    type: 'error' as 'error' | 'success'
+  });
+
+  const showNotification = (message: string, type: 'error' | 'success' = 'error') => {
+    setNotification({ visible: true, message, type });
+  };
+
+  const hideNotification = () => {
+    setNotification(prev => ({ ...prev, visible: false }));
+  };
 
   const validatePassword = (password: string) => {
     if (password.length < 8) {
@@ -39,13 +108,19 @@ export default function ForgotPasswordScreen() {
 
   const handleSendOTP = async () => {
     if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email address');
+      showNotification('Please enter your email address');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+      showNotification('Please enter a valid email address');
+      return;
+    }
+
+    // Check if email is registered
+    if (!registeredEmails.includes(email.toLowerCase())) {
+      showNotification('Email not registered');
       return;
     }
 
@@ -54,11 +129,10 @@ export default function ForgotPasswordScreen() {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // In a real app, you would send the OTP to the email
-      Alert.alert('OTP Sent', `A verification code has been sent to ${email}`);
+      showNotification(`A verification code has been sent to ${email}`, 'success');
       setCurrentStep('otp');
     } catch (error) {
-      Alert.alert('Error', 'Failed to send OTP. Please try again.');
+      showNotification('Failed to send OTP. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +140,13 @@ export default function ForgotPasswordScreen() {
 
   const handleVerifyOTP = async () => {
     if (!otp.trim() || otp.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
+      showNotification('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    // Check if OTP is correct
+    if (otp !== validOTP) {
+      showNotification('Incorrect OTP. Please try again.');
       return;
     }
 
@@ -75,11 +155,9 @@ export default function ForgotPasswordScreen() {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // In a real app, you would verify the OTP with the server
-      // For demo purposes, accept any 6-digit code
       setCurrentStep('reset');
     } catch (error) {
-      Alert.alert('Error', 'Invalid OTP. Please try again.');
+      showNotification('Verification failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -87,18 +165,18 @@ export default function ForgotPasswordScreen() {
 
   const handleResetPassword = async () => {
     if (!newPassword.trim() || !confirmPassword.trim()) {
-      Alert.alert('Error', 'Please fill in all password fields');
+      showNotification('Please fill in all password fields');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      showNotification('Passwords do not match');
       return;
     }
 
     const passwordError = validatePassword(newPassword);
     if (passwordError) {
-      Alert.alert('Password Error', passwordError);
+      showNotification(passwordError);
       return;
     }
 
@@ -118,7 +196,7 @@ export default function ForgotPasswordScreen() {
         ]
       );
     } catch (error) {
-      Alert.alert('Error', 'Failed to reset password. Please try again.');
+      showNotification('Failed to reset password. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -164,6 +242,14 @@ export default function ForgotPasswordScreen() {
           </Text>
         </LinearGradient>
       </TouchableOpacity>
+
+      <View style={styles.demoInfo}>
+        <Text style={styles.demoTitle}>Demo Information</Text>
+        <Text style={styles.demoText}>
+          For testing, use any of the demo emails from the login screen.{'\n'}
+          Valid OTP: <Text style={styles.demoCode}>123456</Text>
+        </Text>
+      </View>
     </View>
   );
 
@@ -213,6 +299,13 @@ export default function ForgotPasswordScreen() {
       >
         <Text style={styles.secondaryButtonText}>Resend Code</Text>
       </TouchableOpacity>
+
+      <View style={styles.demoInfo}>
+        <Text style={styles.demoTitle}>Demo OTP</Text>
+        <Text style={styles.demoText}>
+          Use this code: <Text style={styles.demoCode}>123456</Text>
+        </Text>
+      </View>
     </View>
   );
 
@@ -338,6 +431,13 @@ export default function ForgotPasswordScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <NotificationPopup
+        visible={notification.visible}
+        message={notification.message}
+        type={notification.type}
+        onClose={hideNotification}
+      />
     </LinearGradient>
   );
 }
@@ -490,11 +590,34 @@ const styles = StyleSheet.create({
   secondaryButton: {
     paddingVertical: 12,
     alignItems: 'center',
+    marginBottom: 24,
   },
   secondaryButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-Medium',
     color: Colors.textTertiary,
+  },
+  demoInfo: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  demoTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textInverse,
+    marginBottom: 8,
+  },
+  demoText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: Colors.textTertiary,
+    lineHeight: 20,
+  },
+  demoCode: {
+    fontFamily: 'Inter-Bold',
+    color: Colors.gradientStart,
   },
   footer: {
     alignItems: 'center',
@@ -507,5 +630,44 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: Colors.textTertiary,
     textAlign: 'center',
+  },
+  // Notification styles
+  notificationOverlay: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 60,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  notificationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    maxWidth: 400,
+    width: '90%',
+  },
+  notificationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  notificationText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: Colors.textInverse,
+    flex: 1,
+  },
+  notificationClose: {
+    padding: 4,
+    marginLeft: 8,
   },
 });
